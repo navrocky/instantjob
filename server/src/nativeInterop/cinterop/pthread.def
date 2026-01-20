@@ -1,0 +1,5 @@
+headers = pthread.h
+#headerFilter = pthread.h
+
+compilerOpts.linux = -I/usr/include -I/usr/include/x86_64-linux-gnu -D_GNU_SOURCE
+#linkerOpts.linux = -D__USE_GNU=1 -D_GNU_SOURCE=1
