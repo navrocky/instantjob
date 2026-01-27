@@ -13,3 +13,4 @@ pluginManagement {
 
 rootProject.name = "instantjob"
 include("server")
+include("dashboard")
