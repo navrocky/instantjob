@@ -8,13 +8,7 @@ object LoggerFactory {
         var currentLogLevel: LogLevel = LogLevel.INFO
         val backends = mutableListOf<LoggerBackend>()
 
-        override fun isLogLevelEnabled(level: LogLevel): Boolean = when (currentLogLevel) {
-            LogLevel.TRACE -> level == LogLevel.TRACE || level == LogLevel.DEBUG || level == LogLevel.INFO || level == LogLevel.WARN || level == LogLevel.ERROR
-            LogLevel.DEBUG -> level == LogLevel.DEBUG || level == LogLevel.INFO || level == LogLevel.WARN || level == LogLevel.ERROR
-            LogLevel.INFO -> level == LogLevel.INFO || level == LogLevel.WARN || level == LogLevel.ERROR
-            LogLevel.WARN -> level == LogLevel.WARN || level == LogLevel.ERROR
-            LogLevel.ERROR -> level == LogLevel.ERROR
-        }
+        override fun isLogLevelEnabled(level: LogLevel): Boolean = level >= currentLogLevel
 
         override fun write(level: LogLevel, name: String, message: String, cause: Throwable?) {
             val message = Message(

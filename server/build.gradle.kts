@@ -1,10 +1,14 @@
 @file:Suppress("UNUSED_VARIABLE")
 
+
 val ktorVersion = "3.3.3"
 val mordantVersion = "3.0.2"
 
 plugins {
     kotlin("multiplatform")
+    kotlin("plugin.serialization")
+    id("io.kotest")
+    id("com.google.devtools.ksp")
 }
 
 repositories {
@@ -41,31 +45,31 @@ kotlin {
     }
 
     sourceSets {
-//        val okioVersion = "3.10.2"
-//        val kotlinLoggingVersion = "7.0.3"
-        val commonMain by getting {
+        commonMain {
             dependencies {
                 implementation("io.ktor:ktor-server-core:${ktorVersion}")
                 implementation("io.ktor:ktor-server-cio:${ktorVersion}")
-//                implementation("com.squareup.okio:okio:$okioVersion")
-//                implementation("com.github.ajalt.clikt:clikt:4.2.1")
-//                implementation("com.github.ajalt.mordant:mordant:2.1.0")
+                implementation("io.ktor:ktor-server-content-negotiation:${ktorVersion}")
+                implementation("io.ktor:ktor-serialization-kotlinx-json:${ktorVersion}")
+                implementation("io.ktor:ktor-server-status-pages:${ktorVersion}")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-//                implementation("io.github.oshai:kotlin-logging:$kotlinLoggingVersion")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
             }
         }
-        val commonTest by getting {
+
+        commonTest {
             dependencies {
-                implementation(kotlin("test"))
+//                implementation(kotlin("test"))
+                implementation("io.kotest:kotest-framework-engine:6.1.1")
+                implementation("io.kotest:kotest-assertions-core:6.1.1")
             }
         }
-        val linuxX64Main by getting {
+
+        linuxX64Main {
             dependencies {
                 implementation("io.ktor:ktor-server-core:${ktorVersion}")
                 implementation("com.github.ajalt.mordant:mordant:${mordantVersion}")
-//                implementation("io.github.oshai:kotlin-logging-linuxx64:$kotlinLoggingVersion")
             }
         }
-//        val nativeTest by getting
     }
 }
