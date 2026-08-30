@@ -19,14 +19,14 @@ class Config(
     fun get(path: String): String {
         val fullPath = getFullPath(path)
         return tryGet(fullPath).also {
-            logger.debug { "<a8b97a9c> Get variable: ${fullPath.asString()}=$it" }
+            logger.debug { "<a8b97a9c> Get variable: ${fullPath.asString()}=${displayValue(fullPath, it)}" }
         } ?: throw NoSuchElementException("<0514695e> Value required: ${fullPath.asString()}")
     }
 
     fun getOrDefault(path: String, default: String): String {
         val fullPath = getFullPath(path)
         return (tryGet(getFullPath(path)) ?: default).also {
-            logger.debug { "<55193d62> Get variable: ${fullPath.asString()}=$it" }
+            logger.debug { "<55193d62> Get variable: ${fullPath.asString()}=${displayValue(fullPath, it)}" }
         }
     }
 
@@ -47,4 +47,11 @@ class Config(
 
     private fun parsePath(p: String): ConfigPath =
         p.split(".").toList()
+
+    private fun displayValue(path: ConfigPath, value: String?): String? =
+        if (path.lastOrNull()?.lowercase()?.let { it.contains("password") || it.contains("secret") || it.contains("key") } == true) {
+            "<redacted>"
+        } else {
+            value
+        }
 }

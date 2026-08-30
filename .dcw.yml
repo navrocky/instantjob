@@ -1,0 +1,5 @@
+# This is a configuration file of Docker Compose Workspace (dcw) tool
+# Read more at https://github.com/navrocky/dcw
+
+name: instantjob
+composeFile: env/compose.yaml

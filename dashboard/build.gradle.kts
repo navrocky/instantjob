@@ -7,8 +7,6 @@ val mordantVersion = "3.0.2"
 plugins {
     kotlin("multiplatform")
     kotlin("plugin.serialization")
-    id("io.kotest")
-    id("com.google.devtools.ksp")
 }
 
 repositories {

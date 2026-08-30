@@ -1,4 +1,8 @@
-import common.JsonErrorResponse
+import api.ExecutionsHandler
+import api.JobsHandler
+import api.SystemHandler
+import api.WorkersHandler
+import auth.AuthRegistry
 import common.KtorLogger
 import config.Config
 import config.EnvConfigBackend
@@ -12,12 +16,23 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import instantjob.api.generated.MissingAuthenticationException
+import instantjob.api.generated.apis.ExecutionsApiRoutes
+import instantjob.api.generated.apis.JobsApiRoutes
+import instantjob.api.generated.apis.SystemApiRoutes
+import instantjob.api.generated.apis.WorkersApiRoutes
+import instantjob.api.generated.models.ErrorResponse
 import log.LogLevel
 import log.LoggerFactory
 import log.logger
-import scheduler.JobSchedulerServiceImpl
-import scheduler.MockedJobRepository
-import scheduler.scheduler
+import scheduler.ApiException
+import scheduler.CallbackDispatcher
+import scheduler.CallbackSecretRegistry
+import persistence.DatabaseConfig
+import persistence.PostgresDatabase
+import persistence.PostgresSchedulerRepository
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class Main
 
@@ -38,40 +53,69 @@ fun commonMain() {
         val host = config.getOrDefault("host", "0.0.0.0")
         val port = config.getOrDefault("port", "8080").toInt()
 
-        val jobRepository = MockedJobRepository()
-        val jobSchedulerService = JobSchedulerServiceImpl(
-            jobRepository = jobRepository
+        val authRegistry = AuthRegistry.parse(config.getOrDefault("apiKeys", "dev-key:dev"))
+        val postgresDatabase = PostgresDatabase(
+            DatabaseConfig(
+                host = config.getOrDefault("database.host", "127.0.0.1"),
+                port = config.getOrDefault("database.port", "5432").toInt(),
+                name = config.getOrDefault("database.name", "instantjob"),
+                user = config.getOrDefault("database.user", "instantjob"),
+                password = config.getOrDefault("database.password", "test-password"),
+                poolSize = config.getOrDefault("database.poolSize", "10").toInt(),
+            )
         )
+        postgresDatabase.migrate()
+        val schedulerStore = PostgresSchedulerRepository(postgresDatabase)
+        val callbackSecrets = CallbackSecretRegistry.parse(config.getOrDefault("callbackSecrets", ""))
+        val jobsHandler = JobsHandler(authRegistry, schedulerStore)
+        val executionsHandler = ExecutionsHandler(authRegistry, schedulerStore)
+        val workersHandler = WorkersHandler(authRegistry, schedulerStore)
+        val systemHandler = SystemHandler(schedulerStore)
 
         embeddedServer(CIO, serverConfig(applicationEnvironment {
             log = KtorLogger("Ktor")
 
         }) {
             module {
+                val callbackDispatcher = CallbackDispatcher(
+                    repository = schedulerStore,
+                    secrets = callbackSecrets,
+                    allowHttp = config.getOrDefault("callbackAllowHttp", "false").toBooleanStrict(),
+                )
+                val callbackJob = launch { callbackDispatcher.runForever() }
+                monitor.subscribe(ApplicationStopped) {
+                    callbackJob.cancel()
+                    callbackDispatcher.close()
+                    postgresDatabase.close()
+                }
                 install(ContentNegotiation) {
                     json()
                 }
                 install(StatusPages) {
                     exception<Throwable> { call, cause ->
                         val errorClass = when (cause) {
+                            is ApiException -> ErrorClass(cause.status, cause.code)
+                            is MissingAuthenticationException -> ErrorClass(HttpStatusCode.Unauthorized, "UNAUTHORIZED")
                             is BadRequestException -> ErrorClass(HttpStatusCode.BadRequest, "BAD_REQUEST")
+                            is IllegalArgumentException -> ErrorClass(HttpStatusCode.BadRequest, "BAD_REQUEST")
                             is NoSuchElementException -> ErrorClass(HttpStatusCode.NotFound, "NOT_FOUND")
                             else -> ErrorClass(HttpStatusCode.InternalServerError, "INTERNAL_SERVER_ERROR")
                         }
                         call.respond(
                             errorClass.status,
-                            JsonErrorResponse(
+                            ErrorResponse(
                                 code = errorClass.code,
                                 message = cause.message ?: "Unknown error",
-                                causedBy = cause.collectCauseMessages()
+                                requestId = call.request.headers["X-Request-Id"] ?: "unknown",
                             )
                         )
                     }
                 }
                 routing {
-                    scheduler(
-                        jobSchedulerService = jobSchedulerService
-                    )
+                    JobsApiRoutes(this, jobsHandler)
+                    ExecutionsApiRoutes(this, executionsHandler)
+                    WorkersApiRoutes(this, workersHandler)
+                    SystemApiRoutes(this, systemHandler)
                 }.apply {
                     logger.info {
                         "<00d2d4f8> Configured routes:\n" +

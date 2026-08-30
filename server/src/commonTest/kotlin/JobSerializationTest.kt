@@ -1,5 +1,3 @@
-import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.shouldBe
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -8,9 +6,12 @@ import scheduler.Job
 import scheduler.RetryConfig
 import scheduler.ScheduleConfig
 import kotlin.time.Clock
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
-class JobSerializationTest : FunSpec({
-    test("Test jobs serialization") {
+class JobSerializationTest {
+    @Test
+    fun testJobsSerialization() {
         val job = Job(
             id = "1",
             parameters = buildJsonObject {
@@ -30,6 +31,6 @@ class JobSerializationTest : FunSpec({
         )
         val json = Json.encodeToString(job)
         val decodedJob = Json.decodeFromString<Job>(json)
-        decodedJob shouldBe job
+        assertEquals(job, decodedJob)
     }
-})
+}

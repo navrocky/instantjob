@@ -1,0 +1,501 @@
+openapi: 3.2.0
+info:
+  title: InstantJob API
+  version: 1.0.0
+  description: Reliable at-least-once scheduling and execution service.
+servers:
+  - url: /v1
+security:
+  - apiKey: []
+tags:
+  - name: Jobs
+    description: Job registration and inspection.
+  - name: Workers
+    description: Pull-worker lease protocol.
+  - name: Executions
+    description: Execution history.
+  - name: System
+    description: Service health.
+paths:
+  /v1/jobs:
+    post:
+      tags: [Jobs]
+      operationId: createJob
+      summary: Register a job
+      description: Creates an immutable job or returns an earlier idempotent registration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobRequest'
+      responses:
+        '200':
+          description: Job registration result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateJobResponse'
+        default:
+          $ref: '#/components/responses/Error'
+    get:
+      tags: [Jobs]
+      operationId: listJobs
+      summary: List visible jobs
+      description: Lists jobs produced by or targeted at the authenticated service.
+      parameters:
+        - $ref: '#/components/parameters/TargetService'
+        - $ref: '#/components/parameters/TaskName'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/JobStatus' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of jobs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListJobsResponse' }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/jobs/{jobId}:
+    parameters:
+      - $ref: '#/components/parameters/JobId'
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      summary: Get a job
+      description: Returns a job visible to the authenticated service.
+      responses:
+        '200':
+          description: Job details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GetJobResponse' }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Jobs]
+      operationId: cancelJob
+      summary: Cancel a job
+      description: Prevents future executions without interrupting an active execution.
+      responses:
+        '200':
+          description: Updated job state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GetJobResponse' }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/jobs/{jobId}/executions:
+    get:
+      tags: [Executions]
+      operationId: listJobExecutions
+      summary: List job executions
+      description: Returns execution history for one visible job.
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Page of executions.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ListExecutionsResponse' }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/executions/{executionId}:
+    get:
+      tags: [Executions]
+      operationId: getExecution
+      summary: Get an execution
+      description: Returns an execution and its attempts.
+      parameters:
+        - $ref: '#/components/parameters/ExecutionId'
+      responses:
+        '200':
+          description: Execution details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GetExecutionResponse' }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/executions/claim:
+    post:
+      tags: [Workers]
+      operationId: claimExecutions
+      summary: Claim pull executions
+      description: Long-polls and atomically leases executions targeted at the authenticated service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimExecutionsRequest' }
+      responses:
+        '200':
+          description: Claimed executions, possibly empty after the wait timeout.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClaimExecutionsResponse' }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/executions/{executionId}/heartbeat:
+    post:
+      tags: [Workers]
+      operationId: heartbeatExecution
+      summary: Extend an execution lease
+      description: Extends a lease owned by the authenticated target service.
+      parameters:
+        - $ref: '#/components/parameters/ExecutionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaseRequest' }
+      responses:
+        '200':
+          description: Extended lease.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaseResponse' }
+        default: { $ref: '#/components/responses/Error' }
+  /v1/executions/{executionId}/complete:
+    post:
+      tags: [Workers]
+      operationId: completeExecution
+      summary: Complete a leased execution
+      description: Reports a successful or failed pull execution attempt.
+      parameters:
+        - $ref: '#/components/parameters/ExecutionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteExecutionRequest' }
+      responses:
+        '200':
+          description: Updated execution state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GetExecutionResponse' }
+        default: { $ref: '#/components/responses/Error' }
+  /health/live:
+    get:
+      tags: [System]
+      operationId: liveness
+      summary: Liveness probe
+      description: Reports whether the process is alive.
+      security: []
+      responses:
+        '200':
+          description: Process is alive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+  /health/ready:
+    get:
+      tags: [System]
+      operationId: readiness
+      summary: Readiness probe
+      description: Reports whether dependencies are ready.
+      security: []
+      responses:
+        '200':
+          description: Service is ready.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ExecutionId:
+      name: executionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string, maxLength: 256 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    TargetService:
+      name: targetService
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]+$'
+    TaskName:
+      name: taskName
+      in: query
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._-]+$'
+  responses:
+    Error:
+      description: Request failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+  schemas:
+    ServiceName:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._-]+$'
+    TaskName:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._-]+$'
+    JsonContainer:
+      type: object
+      additionalProperties: {}
+    JobStatus:
+      type: string
+      enum: [ACTIVE, CANCELLING, CANCELLED, COMPLETED, FAILED]
+    ExecutionStatus:
+      type: string
+      enum: [PENDING, LEASED, SUCCEEDED, FAILED]
+    DeliveryType:
+      type: string
+      enum: [PULL, HTTP_CALLBACK]
+    CreateJobRequest:
+      type: object
+      required: [targetService, taskName, idempotencyKey, parameters, schedule, delivery]
+      properties:
+        targetService: { $ref: '#/components/schemas/ServiceName' }
+        taskName: { $ref: '#/components/schemas/TaskName' }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 256 }
+        parameters: { $ref: '#/components/schemas/JsonContainer' }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+        delivery: { $ref: '#/components/schemas/Delivery' }
+        retryPolicy: { $ref: '#/components/schemas/RetryPolicy' }
+        executionPolicy: { $ref: '#/components/schemas/ExecutionPolicy' }
+    Schedule:
+      oneOf:
+        - $ref: '#/components/schemas/ImmediateSchedule'
+        - $ref: '#/components/schemas/AtSchedule'
+        - $ref: '#/components/schemas/IntervalSchedule'
+        - $ref: '#/components/schemas/CronSchedule'
+      discriminator:
+        propertyName: type
+        mapping:
+          IMMEDIATE: '#/components/schemas/ImmediateSchedule'
+          AT: '#/components/schemas/AtSchedule'
+          INTERVAL: '#/components/schemas/IntervalSchedule'
+          CRON: '#/components/schemas/CronSchedule'
+    ImmediateSchedule:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, const: IMMEDIATE }
+    AtSchedule:
+      type: object
+      required: [type, runAt]
+      properties:
+        type: { type: string, const: AT }
+        runAt: { type: string, format: date-time }
+    IntervalSchedule:
+      type: object
+      required: [type, everySeconds]
+      properties:
+        type: { type: string, const: INTERVAL }
+        everySeconds: { type: integer, format: int64, minimum: 1 }
+        startAt: { type: string, format: date-time }
+        maxExecutions: { type: integer, format: int64, minimum: 1 }
+        endAt: { type: string, format: date-time }
+    CronSchedule:
+      type: object
+      required: [type, expression, timezone]
+      properties:
+        type: { type: string, const: CRON }
+        expression: { type: string, minLength: 11, maxLength: 128 }
+        timezone: { type: string, minLength: 1, maxLength: 128 }
+        maxExecutions: { type: integer, format: int64, minimum: 1 }
+        endAt: { type: string, format: date-time }
+    Delivery:
+      oneOf:
+        - $ref: '#/components/schemas/PullDelivery'
+        - $ref: '#/components/schemas/HttpCallbackDelivery'
+      discriminator:
+        propertyName: type
+        mapping:
+          PULL: '#/components/schemas/PullDelivery'
+          HTTP_CALLBACK: '#/components/schemas/HttpCallbackDelivery'
+    PullDelivery:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, const: PULL }
+    HttpCallbackDelivery:
+      type: object
+      required: [type, method, url, parametersType]
+      properties:
+        type: { type: string, const: HTTP_CALLBACK }
+        method: { type: string, enum: [GET, POST, PUT] }
+        url: { type: string, format: uri, maxLength: 2048 }
+        parametersType: { type: string, enum: [QUERY, FORM_URLENCODED, JSON] }
+        secretRef: { type: string, minLength: 1, maxLength: 256 }
+        retryableStatuses:
+          type: array
+          maxItems: 100
+          items: { type: integer, minimum: 400, maximum: 599 }
+    RetryPolicy:
+      type: object
+      properties:
+        maxAttempts: { type: integer, minimum: 1, maximum: 100, default: 5 }
+        initialDelaySeconds: { type: integer, format: int64, minimum: 0, default: 5 }
+        multiplier: { type: number, format: double, minimum: 1, maximum: 100, default: 2.0 }
+        maxDelaySeconds: { type: integer, format: int64, minimum: 0, default: 300 }
+        jitter: { type: number, format: double, minimum: 0, maximum: 1, default: 0.2 }
+    ExecutionPolicy:
+      type: object
+      properties:
+        allowOverlap: { type: boolean, default: false }
+    Job:
+      type: object
+      required: [id, producerService, targetService, taskName, parameters, schedule, delivery, retryPolicy, executionPolicy, status, createdAt, updatedAt, executionCount]
+      properties:
+        id: { type: string, format: uuid }
+        producerService: { $ref: '#/components/schemas/ServiceName' }
+        targetService: { $ref: '#/components/schemas/ServiceName' }
+        taskName: { $ref: '#/components/schemas/TaskName' }
+        idempotencyKey: { type: string }
+        parameters: { $ref: '#/components/schemas/JsonContainer' }
+        schedule: { $ref: '#/components/schemas/Schedule' }
+        delivery: { $ref: '#/components/schemas/Delivery' }
+        retryPolicy: { $ref: '#/components/schemas/RetryPolicy' }
+        executionPolicy: { $ref: '#/components/schemas/ExecutionPolicy' }
+        status: { $ref: '#/components/schemas/JobStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        nextRunAt: { type: string, format: date-time }
+        executionCount: { type: integer, format: int64 }
+    Execution:
+      type: object
+      required: [id, jobId, producerService, targetService, taskName, parameters, scheduledAt, status, attemptCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        jobId: { type: string, format: uuid }
+        producerService: { $ref: '#/components/schemas/ServiceName' }
+        targetService: { $ref: '#/components/schemas/ServiceName' }
+        taskName: { $ref: '#/components/schemas/TaskName' }
+        parameters: { $ref: '#/components/schemas/JsonContainer' }
+        scheduledAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/ExecutionStatus' }
+        attemptCount: { type: integer }
+        leaseUntil: { type: string, format: date-time }
+        result: { $ref: '#/components/schemas/JsonContainer' }
+        error: { type: string, maxLength: 8192 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Attempt:
+      type: object
+      required: [number, startedAt]
+      properties:
+        number: { type: integer, minimum: 1 }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        httpStatus: { type: integer }
+        error: { type: string, maxLength: 8192 }
+    CreateJobResponse:
+      type: object
+      required: [code, created, job]
+      properties:
+        code: { type: string, const: SUCCESS }
+        created: { type: boolean }
+        job: { $ref: '#/components/schemas/Job' }
+    GetJobResponse:
+      type: object
+      required: [code, job]
+      properties:
+        code: { type: string, const: SUCCESS }
+        job: { $ref: '#/components/schemas/Job' }
+    ListJobsResponse:
+      type: object
+      required: [code, items]
+      properties:
+        code: { type: string, const: SUCCESS }
+        items: { type: array, items: { $ref: '#/components/schemas/Job' } }
+        nextCursor: { type: string }
+    ListExecutionsResponse:
+      type: object
+      required: [code, items]
+      properties:
+        code: { type: string, const: SUCCESS }
+        items: { type: array, items: { $ref: '#/components/schemas/Execution' } }
+        nextCursor: { type: string }
+    GetExecutionResponse:
+      type: object
+      required: [code, execution, attempts]
+      properties:
+        code: { type: string, const: SUCCESS }
+        execution: { $ref: '#/components/schemas/Execution' }
+        attempts: { type: array, items: { $ref: '#/components/schemas/Attempt' } }
+    ClaimExecutionsRequest:
+      type: object
+      properties:
+        taskNames:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/TaskName' }
+        maxItems: { type: integer, minimum: 1, maximum: 100, default: 1 }
+        waitSeconds: { type: integer, minimum: 0, maximum: 30, default: 30 }
+    ClaimedExecution:
+      type: object
+      required: [execution, leaseToken, leaseUntil]
+      properties:
+        execution: { $ref: '#/components/schemas/Execution' }
+        leaseToken: { type: string, format: uuid }
+        leaseUntil: { type: string, format: date-time }
+    ClaimExecutionsResponse:
+      type: object
+      required: [code, items]
+      properties:
+        code: { type: string, const: SUCCESS }
+        items: { type: array, items: { $ref: '#/components/schemas/ClaimedExecution' } }
+    LeaseRequest:
+      type: object
+      required: [leaseToken]
+      properties:
+        leaseToken: { type: string, format: uuid }
+    LeaseResponse:
+      type: object
+      required: [code, leaseUntil]
+      properties:
+        code: { type: string, const: SUCCESS }
+        leaseUntil: { type: string, format: date-time }
+    CompleteExecutionRequest:
+      type: object
+      required: [leaseToken, outcome]
+      properties:
+        leaseToken: { type: string, format: uuid }
+        outcome: { type: string, enum: [SUCCEEDED, FAILED] }
+        retryable: { type: boolean, default: true }
+        result: { $ref: '#/components/schemas/JsonContainer' }
+        error: { type: string, maxLength: 8192 }
+    ErrorResponse:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        requestId: { type: string }
+        details: { $ref: '#/components/schemas/JsonContainer' }
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [UP] }
