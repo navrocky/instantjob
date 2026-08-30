@@ -96,7 +96,7 @@ class PostgresSchedulerRepositoryTest {
         parameters = emptyMap(), schedule = ImmediateSchedule(), delivery = PullDelivery(),
     )
 
-    private fun database() = PostgresDatabase(DatabaseConfig("127.0.0.1", 55432, "instantjob", "instantjob", "test-password", 10))
+    private fun database() = PostgresDatabase(DatabaseConfig("127.0.0.1", 5432, "instantjob", "instantjob", "test-password", 10))
 
     @OptIn(DelicateKormiumApi::class)
     private fun clean(database: PostgresDatabase) {

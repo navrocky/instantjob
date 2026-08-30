@@ -1,177 +1,132 @@
 # InstantJob
 
-InstantJob — прототип независимого от языка и фреймворка сервиса для постановки и планирования фоновых задач. Клиент описывает задачу через HTTP API, а сервис хранит её состояние и, в перспективе, вызывает настроенный callback.
+InstantJob is a language- and framework-independent service for reliable background job scheduling. Other services register jobs through the REST API, and InstantJob runs them through HTTP callbacks or leases them to pull workers using the lease/heartbeat protocol.
 
-Проект написан на Kotlin Multiplatform:
+The server is written in Kotlin Multiplatform and builds as a native Linux binary using Ktor/CIO. PostgreSQL is the source of truth, and delivery follows at-least-once semantics.
 
-- `server` — нативный HTTP-сервис на Ktor/CIO;
-- `dashboard` — заготовка браузерного интерфейса на Kotlin/JS.
+## Features
 
-## Текущее состояние
+- immediate, scheduled, interval-based, and six-field cron execution with IANA time zones;
+- one-time, bounded, and indefinitely recurring jobs;
+- HTTP callbacks and pull workers;
+- transactional job-submission idempotency;
+- leases, heartbeats, recovery of abandoned jobs, and retries with exponential backoff;
+- concurrent operation of multiple instances through PostgreSQL `SKIP LOCKED`;
+- an OpenAPI 3.2 contract-first API with Ktor route and DTO generation via `openapi-yagen`;
+- liveness and readiness endpoints.
 
-Проект находится на ранней стадии разработки. OpenAPI 3.2 является источником REST-контракта; `openapi-yagen` генерирует Ktor routes, handler interfaces, DTO и validation. Реализованы PostgreSQL persistence, immediate/at/interval/cron расписания, идемпотентность, pull leases с heartbeat, retry/backoff и HTTP callbacks.
+The dashboard is currently a placeholder. Retention, Prometheus metrics, full ACL support, and production hardening of callback SSRF protection are not yet complete.
 
-Production runtime использует `PostgresSchedulerRepository`; in-memory `SchedulerStore` оставлен для быстрых unit-тестов. Dashboard содержит только стартовую страницу.
+## Implementation map
 
-## Требования
+The features listed above are implemented in the following components:
 
-- Linux x86_64 или Linux ARM64;
-- JDK, совместимый с Gradle 9.3;
-- системные заголовки pthread для cinterop;
-- интернет при первом запуске Gradle Wrapper и загрузке зависимостей.
-- `openapi-yagen` с `builtin:kotlin_ktor_server` для OpenAPI 3.2 в `PATH`;
-- `libpq` для линковки PostgreSQL backend.
+| Feature | Implementation |
+|---|---|
+| immediate, AT, interval, and cron schedules | [`ScheduleCalculator.kt`](server/src/commonMain/kotlin/scheduler/ScheduleCalculator.kt) |
+| PostgreSQL persistence, transactional idempotency, leases, retries, and `SKIP LOCKED` coordination | [`PostgresSchedulerRepository.kt`](server/src/commonMain/kotlin/persistence/PostgresSchedulerRepository.kt) |
+| HTTP callback delivery and callback authentication | [`CallbackDispatcher.kt`](server/src/commonMain/kotlin/scheduler/CallbackDispatcher.kt) |
+| REST handlers and API-key service identity | [`ApiHandlers.kt`](server/src/commonMain/kotlin/api/ApiHandlers.kt) and [`AuthRegistry.kt`](server/src/commonMain/kotlin/auth/AuthRegistry.kt) |
+| generated routes and DTOs | [`api/openapi.yaml`](api/openapi.yaml) and the `generateOpenApiServer` Gradle task |
+| database schema | [`V001__initial_schema.sql`](server/src/commonMain/resources/db/migration/V001__initial_schema.sql) |
 
-Windows-цель объявлена в конфигурации, но исходники окружения и pthread cinterop сейчас ориентированы на Linux. macOS-цели отключены.
+Cron expressions contain six fields in the order `second minute hour day-of-month month day-of-week`. Numeric wildcards, lists, ranges, and steps are supported. Months use `1..12`; weekdays use `0..7`, with both `0` and `7` representing Sunday. Named months and weekdays are not supported.
 
-## Структура проекта
+## Requirements
 
-```text
-.
-├── dashboard/                 # Kotlin/JS dashboard
-│   └── src/jsMain/
-├── server/                    # Kotlin/Native сервер
-│   └── src/
-│       ├── commonMain/        # API, доменная логика, конфигурация, логирование
-│       ├── commonTest/        # общие тесты
-│       ├── linuxMain/         # Linux-реализация чтения environment variables
-│       ├── nativeMain/        # native entry point и console logger
-│       └── nativeInterop/     # pthread cinterop
-├── build.gradle.kts
-└── settings.gradle.kts
-```
+- Linux x86_64 or ARM64;
+- JDK 17 or newer;
+- Docker with the Compose plugin or `dcw` for local PostgreSQL;
+- `openapi-yagen` available in `PATH`, with OpenAPI 3.2 support in `builtin:kotlin_ktor_server`;
+- `libpq` and pthread system headers for the Kotlin/Native build;
+- internet access for the initial Gradle and npm dependency downloads.
 
-## Сборка и запуск
+A Windows target is declared, but the current platform sources and cinterop configuration are Linux-oriented. macOS targets are disabled.
 
-Все команды выполняются из корня репозитория:
+## Quick start
 
-```bash
-# запустить PostgreSQL для локальной разработки
-docker compose -f env/compose.yaml up -d --wait
-
-# проверить проект
-./gradlew check
-
-# запустить PostgreSQL integration tests
-INSTANTJOB_TEST_POSTGRES=true ./gradlew :server:linuxX64Test
-
-# собрать debug-бинарник сервера для Linux x86_64
-./gradlew :server:linkInstajobDebugExecutableLinuxX64
-
-# собрать development bundle dashboard
-./gradlew :dashboard:jsBrowserDevelopmentWebpack
-```
-
-Тестовый PostgreSQL доступен на `127.0.0.1:55432`; база, пользователь и пароль — `instantjob`, `instantjob`, `test-password`. Данные сохраняются в Docker volume `instantjob-dev_postgres-data`.
-
-```bash
-# остановить окружение, сохранив данные
-docker compose -f env/compose.yaml down
-
-# остановить окружение и удалить тестовые данные
-docker compose -f env/compose.yaml down --volumes
-```
-
-Если установлен [dcw](https://github.com/navrocky/dcw), тестовое окружение можно переключать из корня проекта короче:
+Start PostgreSQL from the project root:
 
 ```bash
 dcw up
+```
+
+Without `dcw`, use Docker Compose directly:
+
+```bash
+docker compose -f env/compose.yaml up -d --wait
+```
+
+Build and run the server:
+
+```bash
+./gradlew :server:linkInstajobDebugExecutableLinuxX64
+
+INSTANTJOB_DATABASE_PASSWORD=test-password \
+server/build/bin/linuxX64/instajobDebugExecutable/instajob.kexe
+```
+
+By default, the HTTP API listens on `0.0.0.0:8080`, and local PostgreSQL is available at `127.0.0.1:5432`. The development API key is `dev-key`, mapped to the `dev` service.
+
+Stop the environment:
+
+```bash
 dcw down
-
-# остановить окружение и удалить его volumes
-dcw down -p
+dcw down -p  # Also remove the PostgreSQL volume
 ```
 
-Конфигурация читается из переменных окружения:
+The equivalent commands are `docker compose -f env/compose.yaml down` and `docker compose -f env/compose.yaml down --volumes`.
 
-| Переменная | По умолчанию | Назначение |
+## Build and tests
+
+```bash
+# Native unit tests
+./gradlew :server:linuxX64Test
+
+# The same tests, including the PostgreSQL integration suite
+INSTANTJOB_TEST_POSTGRES=true ./gradlew :server:linuxX64Test
+
+# All project checks
+./gradlew check
+
+# Dashboard development bundle
+./gradlew :dashboard:jsBrowserDevelopmentWebpack
+```
+
+Integration tests use PostgreSQL from `env/compose.yaml`: database `instantjob`, user `instantjob`, password `test-password`, address `127.0.0.1:5432`.
+
+## Configuration
+
+Environment variable names are derived from configuration paths and use the `INSTANTJOB_` prefix.
+
+| Variable | Default | Purpose |
 |---|---:|---|
-| `INSTANTJOB_HOST` | `0.0.0.0` | адрес HTTP-сервера |
-| `INSTANTJOB_PORT` | `8080` | порт HTTP-сервера |
-| `INSTANTJOB_LOGLEVEL` | `DEBUG` | уровень логирования: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` |
-| `INSTANTJOB_APIKEYS` | `dev-key:dev` | пары `api-key:service`, разделённые запятыми |
-| `INSTANTJOB_CALLBACKSECRETS` | пусто | пары `secretRef=Authorization value` |
-| `INSTANTJOB_CALLBACKALLOWHTTP` | `false` | разрешить callback по HTTP вместо HTTPS |
-| `INSTANTJOB_DATABASE_HOST` | `127.0.0.1` | адрес PostgreSQL |
-| `INSTANTJOB_DATABASE_PORT` | `5432` | порт PostgreSQL |
-| `INSTANTJOB_DATABASE_NAME` | `instantjob` | база данных |
-| `INSTANTJOB_DATABASE_USER` | `instantjob` | пользователь PostgreSQL |
-| `INSTANTJOB_DATABASE_PASSWORD` | — | обязательный пароль PostgreSQL |
-| `INSTANTJOB_DATABASE_POOLSIZE` | `10` | размер пула соединений |
+| `INSTANTJOB_HOST` | `0.0.0.0` | HTTP server bind address |
+| `INSTANTJOB_PORT` | `8080` | HTTP server port |
+| `INSTANTJOB_LOGLEVEL` | `DEBUG` | `TRACE`, `DEBUG`, `INFO`, `WARN`, or `ERROR` |
+| `INSTANTJOB_APIKEYS` | `dev-key:dev` | comma-separated `api-key:service` pairs |
+| `INSTANTJOB_CALLBACKSECRETS` | empty | `secretRef=Authorization value` pairs |
+| `INSTANTJOB_CALLBACKALLOWHTTP` | `false` | allow HTTP rather than HTTPS callback URLs |
+| `INSTANTJOB_DATABASE_HOST` | `127.0.0.1` | PostgreSQL host |
+| `INSTANTJOB_DATABASE_PORT` | `5432` | PostgreSQL port |
+| `INSTANTJOB_DATABASE_NAME` | `instantjob` | database name |
+| `INSTANTJOB_DATABASE_USER` | `instantjob` | database user |
+| `INSTANTJOB_DATABASE_PASSWORD` | — | required database password |
+| `INSTANTJOB_DATABASE_POOLSIZE` | `10` | connection pool size |
 
-## HTTP API
+Passwords, API keys, and secrets are masked in configuration logs.
 
-Все ответы содержат поле `code`. Если клиент передаёт `X-Request-Id`, значение используется в контексте запроса; иначе сервис генерирует идентификатор сам.
+## API and project layout
 
-### Создать задачу
+See [docs/api.md](docs/api.md) for the complete REST API, scheduling, callback, and pull protocol documentation. The machine-readable source of truth is [api/openapi.yaml](api/openapi.yaml).
 
-```http
-POST /v1/jobs
-Content-Type: application/json
+```text
+api/openapi.yaml             OpenAPI 3.2 contract
+env/compose.yaml             local PostgreSQL environment
+server/src/commonMain/       API handlers, scheduler, and persistence
+server/src/commonTest/       unit and PostgreSQL integration tests
+server/src/nativeMain/       native entry point and console logger
+dashboard/src/jsMain/        Kotlin/JS dashboard placeholder
 ```
 
-Пример тела запроса:
-
-```json
-{
-  "targetService": "report-worker",
-  "taskName": "build-report",
-  "idempotencyKey": "daily-report-2026-08-29",
-  "parameters": { "reportId": 42 },
-  "delivery": {
-    "type": "HTTP_CALLBACK",
-    "method": "POST",
-    "url": "https://example.com/callback",
-    "parametersType": "JSON"
-  },
-  "retryPolicy": {
-    "maxAttempts": 5,
-    "initialDelaySeconds": 5,
-    "multiplier": 2.0,
-    "maxDelaySeconds": 300,
-    "jitter": 0.2
-  },
-  "schedule": {
-    "type": "INTERVAL",
-    "everySeconds": 3600
-  }
-}
-```
-
-Успешный ответ:
-
-```json
-{ "code": "SUCCESS", "created": true, "job": { "id": "..." } }
-```
-
-Повторный идентичный запрос с тем же `idempotencyKey` возвращает исходную задачу с `created: false`; другой payload получает `409`.
-
-### Получить задачу
-
-```http
-GET /v1/jobs/{id}
-```
-
-### Отменить задачу
-
-```http
-DELETE /v1/jobs/{id}
-```
-
-Отмена запрещает будущие запуски, но не прерывает execution, уже взятый worker-ом.
-
-Ошибки возвращаются с HTTP-статусом `400`, `404` или `500` и телом следующего вида:
-
-```json
-{
-  "code": "NOT_FOUND",
-  "message": "Job could not be found",
-  "requestId": "..."
-}
-```
-
-## Разработка
-
-Перед коммитом запускайте `./gradlew check`; если менялся конкретный target, дополнительно собирайте его артефакт. PostgreSQL integration tests включаются переменной `INSTANTJOB_TEST_POSTGRES=true` и ожидают тестовую БД `instantjob` на `127.0.0.1:55432` с пользователем `instantjob` и паролем `test-password`.
-
-Правила для автоматизированных участников и краткая карта архитектуры находятся в [AGENTS.md](AGENTS.md).
+Gradle generates API code in `server/build/generated/openapi/kotlin`. Generated files must not be edited or committed. Development rules for automated contributors are documented in [AGENTS.md](AGENTS.md).
