@@ -64,6 +64,7 @@ Preserve these existing API rules unless a task explicitly changes the contract:
 - Prefer immutable data classes and constructor-injected dependencies.
 - Use `kotlinx.serialization` for API models; sealed polymorphic variants require stable `@SerialName` values.
 - Use `kotlin.time` and multiplatform APIs in shared code. Avoid JVM-only APIs in `commonMain`.
+- Always call `delay` with a `Duration`, for example `delay(100.milliseconds)`, rather than using the millisecond-number overload.
 - Log through `log.logger`; include the request context in service logs where available.
 - Existing error messages contain searchable identifiers such as `<07e63b5e>`. Preserve them when editing an existing error path and use a new unique identifier for a new diagnostic path.
 - Avoid broad cleanup or formatting in files that contain unrelated user changes.

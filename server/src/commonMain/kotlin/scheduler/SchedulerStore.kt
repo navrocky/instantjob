@@ -12,6 +12,7 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.random.Random
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
@@ -160,7 +161,7 @@ class SchedulerStore(
                     .toList()
             }
             if (claimed.isNotEmpty() || clock.now() >= deadline) return claimed
-            delay(100)
+            delay(100.milliseconds)
         } while (true)
     }
 

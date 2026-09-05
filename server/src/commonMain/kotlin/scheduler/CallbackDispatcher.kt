@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class CallbackSecretRegistry(private val authorizationValues: Map<String, String>) {
@@ -48,12 +49,12 @@ class CallbackDispatcher(
         while (true) {
             try {
                 val claimed = repository.claimCallbacks(20)
-                if (claimed.isEmpty()) delay(250)
+                if (claimed.isEmpty()) delay(250.milliseconds)
                 claimed.forEach { dispatch(it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Throwable) {
-                delay(1_000)
+                delay(1.seconds)
             }
         }
     }
