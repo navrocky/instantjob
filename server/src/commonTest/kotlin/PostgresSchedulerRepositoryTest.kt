@@ -39,11 +39,22 @@ class PostgresSchedulerRepositoryTest {
             clean(db)
             db.migrate()
             val repositories = List(4) { PostgresSchedulerRepository(db) }
-            val creates = coroutineScope { repositories.map { repository -> async { repository.create("producer", request("shared")) } }.awaitAll() }
+            val creates = coroutineScope {
+                repositories.map { repository ->
+                    async {
+                        repository.create(
+                            "producer",
+                            request("shared")
+                        )
+                    }
+                }.awaitAll()
+            }
             assertEquals(1, creates.count { it.created })
             assertEquals(1, creates.map { it.job.id }.distinct().size)
 
-            val claims = coroutineScope { repositories.map { repository -> async { repository.claim("worker", null, 1, 0) } }.awaitAll().flatten() }
+            val claims = coroutineScope {
+                repositories.map { repository -> async { repository.claim("worker", null, 1, 0) } }.awaitAll().flatten()
+            }
             assertEquals(1, claims.size)
             assertEquals(ExecutionStatus.LEASED, claims.single().execution.status)
         }
@@ -62,7 +73,10 @@ class PostgresSchedulerRepositoryTest {
             assertTrue(extended > claimed.leaseUntil)
             val completed = repository.complete(
                 "worker", claimed.execution.id,
-                CompleteExecutionRequest(leaseToken = claimed.leaseToken, outcome = CompleteExecutionRequestOutcome.SUCCEEDED),
+                CompleteExecutionRequest(
+                    leaseToken = claimed.leaseToken,
+                    outcome = CompleteExecutionRequestOutcome.SUCCEEDED
+                ),
             ).first
             assertEquals(ExecutionStatus.SUCCEEDED, completed.status)
             assertFalse(repository.claim("worker", null, 1, 0).isNotEmpty())
@@ -96,7 +110,8 @@ class PostgresSchedulerRepositoryTest {
         parameters = emptyMap(), schedule = ImmediateSchedule(), delivery = PullDelivery(),
     )
 
-    private fun database() = PostgresDatabase(DatabaseConfig("127.0.0.1", 5432, "instantjob", "instantjob", "test-password", 10))
+    private fun database() =
+        PostgresDatabase(DatabaseConfig("127.0.0.1", 5432, "instantjob", "instantjob", "test-password", 10))
 
     @OptIn(DelicateKormiumApi::class)
     private fun clean(database: PostgresDatabase) {

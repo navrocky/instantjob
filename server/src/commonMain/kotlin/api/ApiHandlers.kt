@@ -1,7 +1,10 @@
 package api
 
 import auth.AuthRegistry
-import instantjob.api.generated.apis.*
+import instantjob.api.generated.apis.ExecutionsApiHandler
+import instantjob.api.generated.apis.JobsApiHandler
+import instantjob.api.generated.apis.SystemApiHandler
+import instantjob.api.generated.apis.WorkersApiHandler
 import instantjob.api.generated.models.*
 import scheduler.SchedulerRepository
 
@@ -49,7 +52,12 @@ class ExecutionsHandler(
         return GetExecutionResponse(code = "SUCCESS", execution = execution, attempts = attempts)
     }
 
-    override suspend fun listJobExecutions(jobId: String, apiKey: String, cursor: String?, limit: Int?): ListExecutionsResponse {
+    override suspend fun listJobExecutions(
+        jobId: String,
+        apiKey: String,
+        cursor: String?,
+        limit: Int?
+    ): ListExecutionsResponse {
         val principal = auth.authenticate(apiKey)
         val (items, next) = store.listExecutions(principal.serviceName, jobId, cursor, limit ?: 50)
         return ListExecutionsResponse(code = "SUCCESS", items = items, nextCursor = next)
@@ -73,10 +81,17 @@ class WorkersHandler(
 
     override suspend fun heartbeatExecution(executionId: String, apiKey: String, body: LeaseRequest): LeaseResponse {
         val principal = auth.authenticate(apiKey)
-        return LeaseResponse(code = "SUCCESS", leaseUntil = store.heartbeat(principal.serviceName, executionId, body.leaseToken))
+        return LeaseResponse(
+            code = "SUCCESS",
+            leaseUntil = store.heartbeat(principal.serviceName, executionId, body.leaseToken)
+        )
     }
 
-    override suspend fun completeExecution(executionId: String, apiKey: String, body: CompleteExecutionRequest): GetExecutionResponse {
+    override suspend fun completeExecution(
+        executionId: String,
+        apiKey: String,
+        body: CompleteExecutionRequest
+    ): GetExecutionResponse {
         val principal = auth.authenticate(apiKey)
         val (execution, attempts) = store.complete(principal.serviceName, executionId, body)
         return GetExecutionResponse(code = "SUCCESS", execution = execution, attempts = attempts)

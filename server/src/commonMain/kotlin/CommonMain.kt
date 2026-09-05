@@ -6,6 +6,12 @@ import auth.AuthRegistry
 import common.KtorLogger
 import config.Config
 import config.EnvConfigBackend
+import instantjob.api.generated.MissingAuthenticationException
+import instantjob.api.generated.apis.ExecutionsApiRoutes
+import instantjob.api.generated.apis.JobsApiRoutes
+import instantjob.api.generated.apis.SystemApiRoutes
+import instantjob.api.generated.apis.WorkersApiRoutes
+import instantjob.api.generated.models.ErrorResponse
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -16,23 +22,16 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import instantjob.api.generated.MissingAuthenticationException
-import instantjob.api.generated.apis.ExecutionsApiRoutes
-import instantjob.api.generated.apis.JobsApiRoutes
-import instantjob.api.generated.apis.SystemApiRoutes
-import instantjob.api.generated.apis.WorkersApiRoutes
-import instantjob.api.generated.models.ErrorResponse
+import kotlinx.coroutines.launch
 import log.LogLevel
 import log.LoggerFactory
 import log.logger
-import scheduler.ApiException
-import scheduler.CallbackDispatcher
-import scheduler.CallbackSecretRegistry
 import persistence.DatabaseConfig
 import persistence.PostgresDatabase
 import persistence.PostgresSchedulerRepository
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import scheduler.ApiException
+import scheduler.CallbackDispatcher
+import scheduler.CallbackSecretRegistry
 
 class Main
 

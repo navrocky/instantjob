@@ -17,7 +17,11 @@ class ConsoleLoggerBackend : LoggerBackend {
         val milliseconds = Clock.System.now().toEpochMilliseconds()
 
         println(
-            "${green(Instant.fromEpochMilliseconds(milliseconds).toString())} [${message.threadName}] ${levelColor(message.level.name.padEnd(5))} " +
+            "${green(Instant.fromEpochMilliseconds(milliseconds).toString())} [${message.threadName}] ${
+                levelColor(
+                    message.level.name.padEnd(5)
+                )
+            } " +
                     "${brightWhite(message.name)} - ${message.message}"
         )
     }

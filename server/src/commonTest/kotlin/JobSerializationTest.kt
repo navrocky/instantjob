@@ -5,9 +5,9 @@ import scheduler.CallbackConfig
 import scheduler.Job
 import scheduler.RetryConfig
 import scheduler.ScheduleConfig
-import kotlin.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Clock
 
 class JobSerializationTest {
     @Test

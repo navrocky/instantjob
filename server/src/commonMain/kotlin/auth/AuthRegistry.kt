@@ -1,6 +1,6 @@
 package auth
 
-import io.ktor.http.HttpStatusCode
+import io.ktor.http.*
 import scheduler.ApiException
 
 data class ServicePrincipal(val serviceName: String)

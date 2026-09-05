@@ -1,15 +1,8 @@
 package scheduler
 
 import instantjob.api.generated.models.*
-import io.ktor.http.HttpStatusCode
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.LocalTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.isoDayNumber
-import kotlinx.datetime.plus
-import kotlinx.datetime.toInstant
-import kotlinx.datetime.toLocalDateTime
+import io.ktor.http.*
+import kotlinx.datetime.*
 import kotlin.math.floor
 import kotlin.time.Instant
 
@@ -38,8 +31,10 @@ object ScheduleCalculator {
                 val bounded = schedule.endAt
                 if (bounded != null && candidate > bounded) null else maxOf(candidate, now)
             }
+
             is CronSchedule -> {
-                val candidate = CronExpression(schedule.expression).nextAfter(maxOf(scheduledAt, now), schedule.timezone)
+                val candidate =
+                    CronExpression(schedule.expression).nextAfter(maxOf(scheduledAt, now), schedule.timezone)
                 if (schedule.endAt != null && candidate > schedule.endAt) null else candidate
             }
         }
@@ -109,9 +104,11 @@ private class CronExpression(expression: String) {
             val range = when {
                 rangeText == "*" -> min..max
                 '-' in rangeText -> {
-                    val bounds = rangeText.split('-', limit = 2).map { it.toIntOrNull() ?: invalid("Invalid cron field: $text") }
+                    val bounds =
+                        rangeText.split('-', limit = 2).map { it.toIntOrNull() ?: invalid("Invalid cron field: $text") }
                     bounds[0]..bounds[1]
                 }
+
                 else -> {
                     val value = rangeText.toIntOrNull() ?: invalid("Invalid cron field: $text")
                     value..value

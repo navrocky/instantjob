@@ -1,26 +1,28 @@
 package scheduler
 
 import instantjob.api.generated.models.*
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
-import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.json
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class CallbackSecretRegistry(private val authorizationValues: Map<String, String>) {
     fun authorization(secretRef: String?): String? = secretRef?.let {
-        authorizationValues[it] ?: throw ApiException(HttpStatusCode.InternalServerError, "SECRET_NOT_FOUND", "Callback secret is not configured: $it")
+        authorizationValues[it] ?: throw ApiException(
+            HttpStatusCode.InternalServerError,
+            "SECRET_NOT_FOUND",
+            "Callback secret is not configured: $it"
+        )
     }
 
     companion object {
@@ -80,6 +82,7 @@ class CallbackDispatcher(
                         contentType(ContentType.Application.Json)
                         setBody(execution)
                     }
+
                     HttpCallbackDeliveryParametersType.FORM_URLENCODED -> setBody(
                         Parameters.build {
                             append("executionId", execution.id)
@@ -87,6 +90,7 @@ class CallbackDispatcher(
                             append("parameters", json.encodeToString(execution.parameters))
                         }.formUrlEncode()
                     )
+
                     HttpCallbackDeliveryParametersType.QUERY -> url {
                         parameters.append("executionId", execution.id)
                         parameters.append("jobId", execution.jobId)
@@ -111,10 +115,15 @@ class CallbackDispatcher(
         }
     }
 
-    private suspend fun completeFromResponse(execution: Execution, token: String, delivery: HttpCallbackDelivery, response: HttpResponse) {
+    private suspend fun completeFromResponse(
+        execution: Execution,
+        token: String,
+        delivery: HttpCallbackDelivery,
+        response: HttpResponse
+    ) {
         val successful = response.status.value in 200..299
         val retryable = response.status.value in (delivery.retryableStatuses ?: emptyList()) ||
-            response.status == HttpStatusCode.RequestTimeout || response.status == HttpStatusCode.TooManyRequests || response.status.value >= 500
+                response.status == HttpStatusCode.RequestTimeout || response.status == HttpStatusCode.TooManyRequests || response.status.value >= 500
         val responseText = runCatching { response.body<String>() }.getOrNull()?.take(8192)
         repository.complete(
             execution.targetService,

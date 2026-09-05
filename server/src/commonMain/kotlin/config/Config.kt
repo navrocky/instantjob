@@ -49,7 +49,9 @@ class Config(
         p.split(".").toList()
 
     private fun displayValue(path: ConfigPath, value: String?): String? =
-        if (path.lastOrNull()?.lowercase()?.let { it.contains("password") || it.contains("secret") || it.contains("key") } == true) {
+        if (path.lastOrNull()?.lowercase()
+                ?.let { it.contains("password") || it.contains("secret") || it.contains("key") } == true
+        ) {
             "<redacted>"
         } else {
             value

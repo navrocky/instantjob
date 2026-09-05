@@ -1,12 +1,10 @@
 package scheduler
 
 import instantjob.api.generated.models.*
-import instantjob.api.generated.models.Job as ApiJob
-import io.ktor.http.HttpStatusCode
+import io.ktor.http.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.math.min
 import kotlin.math.pow
@@ -17,6 +15,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import instantjob.api.generated.models.Job as ApiJob
 
 class ApiException(
     val status: HttpStatusCode,
@@ -29,14 +28,39 @@ data class CreateResult(val created: Boolean, val job: ApiJob)
 interface SchedulerRepository {
     suspend fun create(producer: String, request: CreateJobRequest): CreateResult
     suspend fun getJob(service: String, id: String): ApiJob
-    suspend fun listJobs(service: String, target: String?, task: String?, status: JobStatus?, cursor: String?, limit: Int): Pair<List<ApiJob>, String?>
+    suspend fun listJobs(
+        service: String,
+        target: String?,
+        task: String?,
+        status: JobStatus?,
+        cursor: String?,
+        limit: Int
+    ): Pair<List<ApiJob>, String?>
+
     suspend fun cancel(service: String, id: String): ApiJob
     suspend fun getExecution(service: String, id: String): Pair<Execution, List<Attempt>>
-    suspend fun listExecutions(service: String, jobId: String, cursor: String?, limit: Int): Pair<List<Execution>, String?>
-    suspend fun claim(targetService: String, taskNames: List<String>?, maxItems: Int, waitSeconds: Int): List<ClaimedExecution>
+    suspend fun listExecutions(
+        service: String,
+        jobId: String,
+        cursor: String?,
+        limit: Int
+    ): Pair<List<Execution>, String?>
+
+    suspend fun claim(
+        targetService: String,
+        taskNames: List<String>?,
+        maxItems: Int,
+        waitSeconds: Int
+    ): List<ClaimedExecution>
+
     suspend fun claimCallbacks(maxItems: Int): List<ClaimedExecution>
     suspend fun heartbeat(targetService: String, executionId: String, token: String): Instant
-    suspend fun complete(targetService: String, executionId: String, request: CompleteExecutionRequest): Pair<Execution, List<Attempt>>
+    suspend fun complete(
+        targetService: String,
+        executionId: String,
+        request: CompleteExecutionRequest
+    ): Pair<Execution, List<Attempt>>
+
     suspend fun tick()
     fun isReady(): Boolean
 }
@@ -69,7 +93,11 @@ class SchedulerStore(
         idempotency[key]?.let { existingId ->
             val existing = jobs.getValue(existingId)
             if (existing.requestFingerprint != fingerprint) {
-                throw ApiException(HttpStatusCode.Conflict, "IDEMPOTENCY_CONFLICT", "Idempotency key is already used with another request")
+                throw ApiException(
+                    HttpStatusCode.Conflict,
+                    "IDEMPOTENCY_CONFLICT",
+                    "Idempotency key is already used with another request"
+                )
             }
             return@withLock CreateResult(false, existing.value)
         }
@@ -103,7 +131,14 @@ class SchedulerStore(
         visibleJob(service, id).value
     }
 
-    override suspend fun listJobs(service: String, target: String?, task: String?, status: JobStatus?, cursor: String?, limit: Int): Pair<List<ApiJob>, String?> = mutex.withLock {
+    override suspend fun listJobs(
+        service: String,
+        target: String?,
+        task: String?,
+        status: JobStatus?,
+        cursor: String?,
+        limit: Int
+    ): Pair<List<ApiJob>, String?> = mutex.withLock {
         val offset = cursor?.toIntOrNull() ?: 0
         val filtered = jobs.values.asSequence().map { it.value }
             .filter { it.producerService == service || it.targetService == service }
@@ -120,7 +155,12 @@ class SchedulerStore(
         if (stored.value.producerService != service) {
             throw ApiException(HttpStatusCode.Forbidden, "FORBIDDEN", "Only the producer may cancel a job")
         }
-        if (stored.value.status in setOf(JobStatus.CANCELLED, JobStatus.COMPLETED, JobStatus.FAILED)) return@withLock stored.value
+        if (stored.value.status in setOf(
+                JobStatus.CANCELLED,
+                JobStatus.COMPLETED,
+                JobStatus.FAILED
+            )
+        ) return@withLock stored.value
         val active = executions.values.any { it.value.jobId == id && it.value.status == ExecutionStatus.LEASED }
         stored.value = stored.value.copy(
             status = if (active) JobStatus.CANCELLING else JobStatus.CANCELLED,
@@ -136,7 +176,12 @@ class SchedulerStore(
         stored.value to stored.attempts.toList()
     }
 
-    override suspend fun listExecutions(service: String, jobId: String, cursor: String?, limit: Int): Pair<List<Execution>, String?> = mutex.withLock {
+    override suspend fun listExecutions(
+        service: String,
+        jobId: String,
+        cursor: String?,
+        limit: Int
+    ): Pair<List<Execution>, String?> = mutex.withLock {
         visibleJob(service, jobId)
         val offset = cursor?.toIntOrNull() ?: 0
         val all = executions.values.map { it.value }.filter { it.jobId == jobId }
@@ -144,7 +189,12 @@ class SchedulerStore(
         page to if (offset + page.size < all.size) (offset + page.size).toString() else null
     }
 
-    override suspend fun claim(targetService: String, taskNames: List<String>?, maxItems: Int, waitSeconds: Int): List<ClaimedExecution> {
+    override suspend fun claim(
+        targetService: String,
+        taskNames: List<String>?,
+        maxItems: Int,
+        waitSeconds: Int
+    ): List<ClaimedExecution> {
         val deadline = clock.now() + waitSeconds.seconds
         do {
             val claimed = mutex.withLock {
@@ -177,29 +227,52 @@ class SchedulerStore(
             .toList()
     }
 
-    override suspend fun heartbeat(targetService: String, executionId: String, token: String): Instant = mutex.withLock {
-        val stored = requireLease(targetService, executionId, token)
-        val until = clock.now() + leaseSeconds.seconds
-        stored.value = stored.value.copy(leaseUntil = until, updatedAt = clock.now())
-        until
-    }
+    override suspend fun heartbeat(targetService: String, executionId: String, token: String): Instant =
+        mutex.withLock {
+            val stored = requireLease(targetService, executionId, token)
+            val until = clock.now() + leaseSeconds.seconds
+            stored.value = stored.value.copy(leaseUntil = until, updatedAt = clock.now())
+            until
+        }
 
-    override suspend fun complete(targetService: String, executionId: String, request: CompleteExecutionRequest): Pair<Execution, List<Attempt>> = mutex.withLock {
+    override suspend fun complete(
+        targetService: String,
+        executionId: String,
+        request: CompleteExecutionRequest
+    ): Pair<Execution, List<Attempt>> = mutex.withLock {
         val stored = requireLease(targetService, executionId, request.leaseToken)
         val now = clock.now()
         val attempt = stored.attempts.last()
         stored.attempts[stored.attempts.lastIndex] = attempt.copy(finishedAt = now, error = request.error)
         val job = jobs.getValue(stored.value.jobId)
         if (request.outcome == CompleteExecutionRequestOutcome.SUCCEEDED) {
-            stored.value = stored.value.copy(status = ExecutionStatus.SUCCEEDED, leaseUntil = null, result = request.result, error = null, updatedAt = now)
+            stored.value = stored.value.copy(
+                status = ExecutionStatus.SUCCEEDED,
+                leaseUntil = null,
+                result = request.result,
+                error = null,
+                updatedAt = now
+            )
             finishJobAfterExecutionLocked(job, successful = true, now = now)
         } else {
-            val retry = request.retryable != false && stored.value.attemptCount < (job.value.retryPolicy.maxAttempts ?: 5)
+            val retry =
+                request.retryable != false && stored.value.attemptCount < (job.value.retryPolicy.maxAttempts ?: 5)
             if (retry) {
                 val delaySeconds = retryDelay(job.value.retryPolicy, stored.value.attemptCount)
-                stored.value = stored.value.copy(status = ExecutionStatus.PENDING, leaseUntil = null, error = request.error, scheduledAt = now + delaySeconds.seconds, updatedAt = now)
+                stored.value = stored.value.copy(
+                    status = ExecutionStatus.PENDING,
+                    leaseUntil = null,
+                    error = request.error,
+                    scheduledAt = now + delaySeconds.seconds,
+                    updatedAt = now
+                )
             } else {
-                stored.value = stored.value.copy(status = ExecutionStatus.FAILED, leaseUntil = null, error = request.error, updatedAt = now)
+                stored.value = stored.value.copy(
+                    status = ExecutionStatus.FAILED,
+                    leaseUntil = null,
+                    error = request.error,
+                    updatedAt = now
+                )
                 finishJobAfterExecutionLocked(job, successful = false, now = now)
             }
         }
@@ -220,7 +293,12 @@ class SchedulerStore(
             var job = stored.value
             val due = job.nextRunAt ?: return@forEach
             if (job.status != JobStatus.ACTIVE || due > now) return@forEach
-            val hasActive = executions.values.any { it.value.jobId == job.id && it.value.status in setOf(ExecutionStatus.PENDING, ExecutionStatus.LEASED) }
+            val hasActive = executions.values.any {
+                it.value.jobId == job.id && it.value.status in setOf(
+                    ExecutionStatus.PENDING,
+                    ExecutionStatus.LEASED
+                )
+            }
             if (hasActive && job.executionPolicy.allowOverlap != true) return@forEach
             val execution = Execution(
                 id = newId(), jobId = job.id, producerService = job.producerService,
@@ -237,14 +315,27 @@ class SchedulerStore(
     }
 
     private fun recoverExpiredLeasesLocked(now: Instant) {
-        executions.values.filter { it.value.status == ExecutionStatus.LEASED && (it.value.leaseUntil ?: Instant.DISTANT_FUTURE) <= now }.forEach { stored ->
+        executions.values.filter {
+            it.value.status == ExecutionStatus.LEASED && (it.value.leaseUntil ?: Instant.DISTANT_FUTURE) <= now
+        }.forEach { stored ->
             val attempt = stored.attempts.last()
             stored.attempts[stored.attempts.lastIndex] = attempt.copy(finishedAt = now, error = "Lease expired")
             val job = jobs.getValue(stored.value.jobId)
             if (stored.value.attemptCount < (job.value.retryPolicy.maxAttempts ?: 5)) {
-                stored.value = stored.value.copy(status = ExecutionStatus.PENDING, leaseUntil = null, scheduledAt = now + retryDelay(job.value.retryPolicy, stored.value.attemptCount).seconds, error = "Lease expired", updatedAt = now)
+                stored.value = stored.value.copy(
+                    status = ExecutionStatus.PENDING,
+                    leaseUntil = null,
+                    scheduledAt = now + retryDelay(job.value.retryPolicy, stored.value.attemptCount).seconds,
+                    error = "Lease expired",
+                    updatedAt = now
+                )
             } else {
-                stored.value = stored.value.copy(status = ExecutionStatus.FAILED, leaseUntil = null, error = "Lease expired", updatedAt = now)
+                stored.value = stored.value.copy(
+                    status = ExecutionStatus.FAILED,
+                    leaseUntil = null,
+                    error = "Lease expired",
+                    updatedAt = now
+                )
                 finishJobAfterExecutionLocked(job, false, now)
             }
             stored.leaseToken = null
@@ -257,14 +348,25 @@ class SchedulerStore(
         val attemptNumber = stored.value.attemptCount + 1
         stored.leaseToken = token
         stored.attempts += Attempt(number = attemptNumber, startedAt = now)
-        stored.value = stored.value.copy(status = ExecutionStatus.LEASED, attemptCount = attemptNumber, leaseUntil = until, updatedAt = now)
+        stored.value = stored.value.copy(
+            status = ExecutionStatus.LEASED,
+            attemptCount = attemptNumber,
+            leaseUntil = until,
+            updatedAt = now
+        )
         return ClaimedExecution(stored.value, token, until)
     }
 
     private fun requireLease(service: String, id: String, token: String): StoredExecution {
         val stored = executions[id] ?: notFound("Execution", id)
-        if (stored.value.targetService != service || stored.value.status != ExecutionStatus.LEASED || stored.leaseToken != token || (stored.value.leaseUntil ?: Instant.DISTANT_PAST) <= clock.now()) {
-            throw ApiException(HttpStatusCode.Conflict, "LEASE_CONFLICT", "Lease is missing, expired, or owned by another worker")
+        if (stored.value.targetService != service || stored.value.status != ExecutionStatus.LEASED || stored.leaseToken != token || (stored.value.leaseUntil
+                ?: Instant.DISTANT_PAST) <= clock.now()
+        ) {
+            throw ApiException(
+                HttpStatusCode.Conflict,
+                "LEASE_CONFLICT",
+                "Lease is missing, expired, or owned by another worker"
+            )
         }
         return stored
     }
@@ -273,7 +375,8 @@ class SchedulerStore(
         if (stored.value.status == JobStatus.CANCELLING) {
             stored.value = stored.value.copy(status = JobStatus.CANCELLED, updatedAt = now)
         } else if (stored.value.nextRunAt == null) {
-            stored.value = stored.value.copy(status = if (successful) JobStatus.COMPLETED else JobStatus.FAILED, updatedAt = now)
+            stored.value =
+                stored.value.copy(status = if (successful) JobStatus.COMPLETED else JobStatus.FAILED, updatedAt = now)
         }
     }
 
@@ -292,10 +395,18 @@ class SchedulerStore(
             is CronSchedule -> schedule.maxExecutions != null && schedule.endAt != null
             else -> false
         }
-        if (bounded) throw ApiException(HttpStatusCode.BadRequest, "INVALID_SCHEDULE", "Only one of maxExecutions and endAt may be set")
+        if (bounded) throw ApiException(
+            HttpStatusCode.BadRequest,
+            "INVALID_SCHEDULE",
+            "Only one of maxExecutions and endAt may be set"
+        )
         val retry = normalizedRetry(request.retryPolicy)
         if ((retry.maxDelaySeconds ?: 0) < (retry.initialDelaySeconds ?: 0)) {
-            throw ApiException(HttpStatusCode.BadRequest, "INVALID_RETRY_POLICY", "maxDelaySeconds must not be less than initialDelaySeconds")
+            throw ApiException(
+                HttpStatusCode.BadRequest,
+                "INVALID_RETRY_POLICY",
+                "maxDelaySeconds must not be less than initialDelaySeconds"
+            )
         }
     }
 
@@ -308,7 +419,8 @@ class SchedulerStore(
     )
 
     private fun retryDelay(policy: RetryPolicy, attempt: Int): Long {
-        val base = (policy.initialDelaySeconds ?: 5).toDouble() * (policy.multiplier ?: 2.0).pow((attempt - 1).coerceAtLeast(0))
+        val base = (policy.initialDelaySeconds ?: 5).toDouble() * (policy.multiplier
+            ?: 2.0).pow((attempt - 1).coerceAtLeast(0))
         val capped = min(base, (policy.maxDelaySeconds ?: 300).toDouble())
         val jitter = policy.jitter ?: 0.2
         return (capped * Random.nextDouble(1.0 - jitter, 1.0 + jitter)).toLong().coerceAtLeast(0)

@@ -41,8 +41,6 @@ Cron expressions contain six fields in the order `second minute hour day-of-mont
 - `libpq` and pthread system headers for the Kotlin/Native build;
 - internet access for the initial Gradle and npm dependency downloads.
 
-A Windows target is declared, but the current platform sources and cinterop configuration are Linux-oriented. macOS targets are disabled.
-
 ## Quick start
 
 Start PostgreSQL from the project root:
