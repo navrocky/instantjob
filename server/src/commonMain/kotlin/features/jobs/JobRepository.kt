@@ -1,5 +1,11 @@
 package features.jobs
 
+/**
+ * Job record with repository-only idempotency metadata.
+ *
+ * @property job Stored domain job.
+ * @property requestFingerprint Canonical fingerprint of the original registration command.
+ */
 data class StoredJob(val job: Job, val requestFingerprint: String)
 
 interface JobRepository {

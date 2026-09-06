@@ -44,6 +44,12 @@ object ScheduleCalculator : SchedulePlanner {
 }
 
 private class CronExpression(expression: String) {
+    /**
+     * Parsed values of one cron field.
+     *
+     * @property values Accepted numeric values.
+     * @property wildcard Whether the original field matched every value.
+     */
     private data class Field(val values: Set<Int>, val wildcard: Boolean)
 
     private val parts = expression.trim().split(Regex("\\s+"))

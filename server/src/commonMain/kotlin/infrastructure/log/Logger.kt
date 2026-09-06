@@ -1,5 +1,6 @@
 package infrastructure.log
 
+/** Severity threshold and classification of a log record. */
 enum class LogLevel {
     TRACE,
     DEBUG,

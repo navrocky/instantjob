@@ -1,5 +1,11 @@
 package features.executions
 
+/**
+ * Execution record with repository-only lease metadata.
+ *
+ * @property execution Stored domain execution.
+ * @property leaseToken Token associated with the active lease, if any.
+ */
 data class StoredExecution(val execution: Execution, val leaseToken: String?)
 
 interface ExecutionRepository {

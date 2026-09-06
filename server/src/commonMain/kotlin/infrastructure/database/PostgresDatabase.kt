@@ -8,6 +8,16 @@ import io.github.kormium.database.createDatabase
 
 object InstantJobCatalog : Catalog
 
+/**
+ * PostgreSQL connection and pool settings.
+ *
+ * @property host Database server host name or address.
+ * @property port Database server TCP port.
+ * @property name Database name.
+ * @property user Database user name.
+ * @property password Database user password.
+ * @property poolSize Maximum number of pooled connections.
+ */
 data class DatabaseConfig(
     val host: String,
     val port: Int,

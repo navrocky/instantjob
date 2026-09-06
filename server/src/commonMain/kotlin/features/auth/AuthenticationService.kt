@@ -3,6 +3,7 @@ package features.auth
 import common.DomainErrorKind
 import common.DomainException
 
+/** @property serviceName Stable name of the authenticated service. */
 data class ServicePrincipal(val serviceName: String)
 
 interface AuthenticationService {
