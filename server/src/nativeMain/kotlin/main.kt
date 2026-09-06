@@ -1,5 +1,5 @@
-import log.ConsoleLoggerBackend
-import log.LoggerFactory
+import infrastructure.log.ConsoleLoggerBackend
+import infrastructure.log.LoggerFactory
 
 
 fun main(args: Array<String>) {

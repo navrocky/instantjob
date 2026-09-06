@@ -1,20 +1,26 @@
-import instantjob.api.generated.models.*
+import features.executions.CompleteExecutionCommand
+import features.executions.CompletionOutcome
+import features.executions.ExecutionStatus
+import features.jobs.CreateJobCommand
+import features.jobs.Delivery
+import features.jobs.Schedule
+import infrastructure.config.getEnvVal
 import io.github.kormium.DelicateKormiumApi
 import io.github.kormium.autocommit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
-import persistence.DatabaseConfig
-import persistence.PostgresDatabase
-import persistence.PostgresSchedulerRepository
+import infrastructure.database.DatabaseConfig
+import infrastructure.database.PostgresDatabase
+import infrastructure.database.PostgresSchedulerTransactionManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class PostgresSchedulerRepositoryTest {
-    private val enabled = config.getEnvVal("INSTANTJOB_TEST_POSTGRES") == "true"
+class PostgresSchedulerServiceTest {
+    private val enabled = getEnvVal("INSTANTJOB_TEST_POSTGRES") == "true"
 
     @Test
     fun persistsAcrossRepositoryRestart() = runBlocking {
@@ -22,11 +28,11 @@ class PostgresSchedulerRepositoryTest {
         database().use { firstDb ->
             clean(firstDb)
             firstDb.migrate()
-            val first = PostgresSchedulerRepository(firstDb)
+            val first = service(firstDb)
             val created = first.create("producer", request("persist"))
             database().use { secondDb ->
                 secondDb.migrate()
-                val restored = PostgresSchedulerRepository(secondDb).getJob("producer", created.job.id)
+                val restored = service(secondDb).getJob("producer", created.job.id)
                 assertEquals(created.job.id, restored.id)
             }
         }
@@ -38,7 +44,7 @@ class PostgresSchedulerRepositoryTest {
         database().use { db ->
             clean(db)
             db.migrate()
-            val repositories = List(4) { PostgresSchedulerRepository(db) }
+            val repositories = List(4) { service(db) }
             val creates = coroutineScope {
                 repositories.map { repository ->
                     async {
@@ -66,16 +72,16 @@ class PostgresSchedulerRepositoryTest {
         database().use { db ->
             clean(db)
             db.migrate()
-            val repository = PostgresSchedulerRepository(db)
+            val repository = service(db)
             repository.create("producer", request("lease"))
             val claimed = repository.claim("worker", null, 1, 0).single()
             val extended = repository.heartbeat("worker", claimed.execution.id, claimed.leaseToken)
             assertTrue(extended > claimed.leaseUntil)
             val completed = repository.complete(
                 "worker", claimed.execution.id,
-                CompleteExecutionRequest(
+                CompleteExecutionCommand(
                     leaseToken = claimed.leaseToken,
-                    outcome = CompleteExecutionRequestOutcome.SUCCEEDED
+                    outcome = CompletionOutcome.SUCCEEDED
                 ),
             ).first
             assertEquals(ExecutionStatus.SUCCEEDED, completed.status)
@@ -89,13 +95,13 @@ class PostgresSchedulerRepositoryTest {
         database().use { firstDb ->
             clean(firstDb)
             firstDb.migrate()
-            val first = PostgresSchedulerRepository(firstDb, leaseSeconds = 0)
+            val first = service(firstDb, leaseSeconds = 0)
             first.create("producer", request("restart-claim"))
             val claimed = first.claim("worker", null, 1, 0).single()
 
             database().use { secondDb ->
                 secondDb.migrate()
-                val second = PostgresSchedulerRepository(secondDb)
+                val second = service(secondDb)
                 second.tick()
                 val recovered = second.getExecution("worker", claimed.execution.id)
                 assertEquals(ExecutionStatus.PENDING, recovered.first.status)
@@ -105,13 +111,16 @@ class PostgresSchedulerRepositoryTest {
         }
     }
 
-    private fun request(key: String) = CreateJobRequest(
+    private fun request(key: String) = CreateJobCommand(
         targetService = "worker", taskName = "task", idempotencyKey = key,
-        parameters = emptyMap(), schedule = ImmediateSchedule(), delivery = PullDelivery(),
+        parameters = emptyMap(), schedule = Schedule.Immediate, delivery = Delivery.Pull,
     )
 
     private fun database() =
         PostgresDatabase(DatabaseConfig("127.0.0.1", 5432, "instantjob", "instantjob", "test-password", 10))
+
+    private fun service(database: PostgresDatabase, leaseSeconds: Long = 60) =
+        schedulerService(PostgresSchedulerTransactionManager(database), leaseSeconds)
 
     @OptIn(DelicateKormiumApi::class)
     private fun clean(database: PostgresDatabase) {

@@ -23,10 +23,11 @@ The features listed above are implemented in the following components:
 
 | Feature | Implementation |
 |---|---|
-| immediate, AT, interval, and cron schedules | [`ScheduleCalculator.kt`](server/src/commonMain/kotlin/scheduler/ScheduleCalculator.kt) |
-| PostgreSQL persistence, transactional idempotency, leases, retries, and `SKIP LOCKED` coordination | [`PostgresSchedulerRepository.kt`](server/src/commonMain/kotlin/persistence/PostgresSchedulerRepository.kt) |
-| HTTP callback delivery and callback authentication | [`CallbackDispatcher.kt`](server/src/commonMain/kotlin/scheduler/CallbackDispatcher.kt) |
-| REST handlers and API-key service identity | [`ApiHandlers.kt`](server/src/commonMain/kotlin/api/ApiHandlers.kt) and [`AuthRegistry.kt`](server/src/commonMain/kotlin/auth/AuthRegistry.kt) |
+| immediate, AT, interval, and cron schedules | [`SchedulePlanner.kt`](server/src/commonMain/kotlin/features/scheduling/SchedulePlanner.kt) and [`ScheduleCalculator.kt`](server/src/commonMain/kotlin/features/scheduling/ScheduleCalculator.kt) |
+| scheduling, idempotency, leases, retries, and state transitions | [`SchedulerService.kt`](server/src/commonMain/kotlin/features/scheduling/SchedulerService.kt) |
+| PostgreSQL jobs, executions, and attempts persistence | [`PostgresRepositories.kt`](server/src/commonMain/kotlin/infrastructure/database/PostgresRepositories.kt) |
+| HTTP callback application workflow and infrastructure client | [`CallbackDispatcher.kt`](server/src/commonMain/kotlin/features/callbacks/CallbackDispatcher.kt) and [`KtorCallbackClient.kt`](server/src/commonMain/kotlin/infrastructure/http/KtorCallbackClient.kt) |
+| REST handlers, DTO mapping, and API-key service identity | [`ApiHandlers.kt`](server/src/commonMain/kotlin/presentation/rest/ApiHandlers.kt), [`AuthenticationService.kt`](server/src/commonMain/kotlin/features/auth/AuthenticationService.kt), and [`ConfiguredApiKeyRepository.kt`](server/src/commonMain/kotlin/infrastructure/auth/ConfiguredApiKeyRepository.kt) |
 | generated routes and DTOs | [`api/openapi.yaml`](api/openapi.yaml) and the `generateOpenApiServer` Gradle task |
 | database schema | [`V001__initial_schema.sql`](server/src/commonMain/resources/db/migration/V001__initial_schema.sql) |
 
@@ -121,8 +122,10 @@ See [docs/api.md](docs/api.md) for the complete REST API, scheduling, callback, 
 ```text
 api/openapi.yaml             OpenAPI 3.2 contract
 env/compose.yaml             local PostgreSQL environment
-server/src/commonMain/       API handlers, scheduler, and persistence
-server/src/commonTest/       unit and PostgreSQL integration tests
+server/src/commonMain/kotlin/features/       domain models, services, and ports
+server/src/commonMain/kotlin/presentation/   REST presentation adapters
+server/src/commonMain/kotlin/infrastructure/ PostgreSQL and HTTP adapters
+server/src/commonTest/                       unit and PostgreSQL integration tests
 server/src/nativeMain/       native entry point and console logger
 dashboard/src/jsMain/        Kotlin/JS dashboard placeholder
 ```

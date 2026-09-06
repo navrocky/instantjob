@@ -1,6 +1,6 @@
-import instantjob.api.generated.models.CronSchedule
-import scheduler.ApiException
-import scheduler.ScheduleCalculator
+import common.DomainException
+import features.jobs.Schedule
+import features.scheduling.ScheduleCalculator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -10,7 +10,7 @@ class ScheduleCalculatorTest {
     @Test
     fun sixFieldCronUsesSeconds() {
         val next = ScheduleCalculator.firstRunAt(
-            CronSchedule(expression = "15 30 10 * * *", timezone = "UTC"),
+            Schedule.Cron(expression = "15 30 10 * * *", timezone = "UTC"),
             Instant.parse("2026-08-30T10:30:14Z"),
         )
 
@@ -20,7 +20,7 @@ class ScheduleCalculatorTest {
     @Test
     fun cronUsesConfiguredIanaTimezone() {
         val next = ScheduleCalculator.firstRunAt(
-            CronSchedule(expression = "0 0 12 * * *", timezone = "Europe/Moscow"),
+            Schedule.Cron(expression = "0 0 12 * * *", timezone = "Europe/Moscow"),
             Instant.parse("2026-08-30T08:59:59Z"),
         )
 
@@ -30,7 +30,7 @@ class ScheduleCalculatorTest {
     @Test
     fun cronSupportsListsRangesAndSteps() {
         val next = ScheduleCalculator.firstRunAt(
-            CronSchedule(expression = "*/10 0,30 9-10 * * *", timezone = "UTC"),
+            Schedule.Cron(expression = "*/10 0,30 9-10 * * *", timezone = "UTC"),
             Instant.parse("2026-08-30T09:00:00Z"),
         )
 
@@ -39,9 +39,9 @@ class ScheduleCalculatorTest {
 
     @Test
     fun cronRequiresExactlySixFields() {
-        val error = assertFailsWith<ApiException> {
+        val error = assertFailsWith<DomainException> {
             ScheduleCalculator.firstRunAt(
-                CronSchedule(expression = "0 0 12 * *", timezone = "UTC"),
+                Schedule.Cron(expression = "0 0 12 * *", timezone = "UTC"),
                 Instant.parse("2026-08-30T00:00:00Z"),
             )
         }

@@ -1,24 +1,29 @@
-import instantjob.api.generated.models.*
+import common.DomainException
+import common.JsonValue
+import features.executions.CompleteExecutionCommand
+import features.executions.CompletionOutcome
+import features.executions.ExecutionStatus
+import features.jobs.CreateJobCommand
+import features.jobs.Delivery
+import features.jobs.JobStatus
+import features.jobs.Schedule
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.JsonPrimitive
-import scheduler.ApiException
-import scheduler.SchedulerStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class SchedulerStoreTest {
+class SchedulerServiceTest {
     @Test
     fun immediatePullJobIsIdempotentAndCompletes() = runBlocking {
-        val store = SchedulerStore()
-        val request = CreateJobRequest(
+        val store = schedulerService()
+        val request = CreateJobCommand(
             targetService = "worker",
             taskName = "send-report",
             idempotencyKey = "report-42",
-            parameters = mapOf("reportId" to JsonPrimitive(42)),
-            schedule = ImmediateSchedule(),
-            delivery = PullDelivery(),
+            parameters = mapOf("reportId" to JsonValue.NumberValue("42")),
+            schedule = Schedule.Immediate,
+            delivery = Delivery.Pull,
         )
 
         val created = store.create("producer", request)
@@ -32,10 +37,10 @@ class SchedulerStoreTest {
         val (completed, attempts) = store.complete(
             "worker",
             claimed.execution.id,
-            CompleteExecutionRequest(
+            CompleteExecutionCommand(
                 leaseToken = claimed.leaseToken,
-                outcome = CompleteExecutionRequestOutcome.SUCCEEDED,
-                result = mapOf("accepted" to JsonPrimitive(true)),
+                outcome = CompletionOutcome.SUCCEEDED,
+                result = mapOf("accepted" to JsonValue.BooleanValue(true)),
             ),
         )
         assertEquals(ExecutionStatus.SUCCEEDED, completed.status)
@@ -45,43 +50,43 @@ class SchedulerStoreTest {
 
     @Test
     fun conflictingIdempotencyPayloadIsRejected() = runBlocking {
-        val store = SchedulerStore()
-        val base = CreateJobRequest(
+        val store = schedulerService()
+        val base = CreateJobCommand(
             targetService = "worker",
             taskName = "task",
             idempotencyKey = "same-key",
             parameters = emptyMap(),
-            schedule = ImmediateSchedule(),
-            delivery = PullDelivery(),
+            schedule = Schedule.Immediate,
+            delivery = Delivery.Pull,
         )
         store.create("producer", base)
 
         val error = runCatching { store.create("producer", base.copy(taskName = "other")) }.exceptionOrNull()
-        assertTrue(error is ApiException)
+        assertTrue(error is DomainException)
         assertEquals("IDEMPOTENCY_CONFLICT", error.code)
     }
 
     @Test
     fun intervalHonoursExecutionLimit() = runBlocking {
-        val store = SchedulerStore()
+        val store = schedulerService()
         val created = store.create(
             "producer",
-            CreateJobRequest(
+            CreateJobCommand(
                 targetService = "worker",
                 taskName = "twice",
                 idempotencyKey = "twice",
                 parameters = emptyMap(),
-                schedule = IntervalSchedule(everySeconds = 1, maxExecutions = 2),
-                delivery = PullDelivery(),
+                schedule = Schedule.Interval(everySeconds = 1, maxExecutions = 2),
+                delivery = Delivery.Pull,
             ),
         )
         val first = store.claim("worker", null, 1, 0).single()
         store.complete(
             "worker",
             first.execution.id,
-            CompleteExecutionRequest(
+            CompleteExecutionCommand(
                 leaseToken = first.leaseToken,
-                outcome = CompleteExecutionRequestOutcome.SUCCEEDED,
+                outcome = CompletionOutcome.SUCCEEDED,
             ),
         )
         assertEquals(JobStatus.ACTIVE, store.getJob("producer", created.job.id).status)

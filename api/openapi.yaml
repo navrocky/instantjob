@@ -250,40 +250,48 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
   schemas:
     ServiceName:
+      description: Stable identifier of a service that produces or executes jobs.
       type: string
       minLength: 1
       maxLength: 128
       pattern: '^[A-Za-z0-9._-]+$'
     TaskName:
+      description: Stable identifier of a task understood by the target service.
       type: string
       minLength: 1
       maxLength: 128
       pattern: '^[A-Za-z0-9._-]+$'
     JsonContainer:
+      description: Arbitrary JSON-compatible object used for task parameters, results, or error details.
       type: object
       additionalProperties: {}
     JobStatus:
+      description: Current lifecycle state of a job.
       type: string
       enum: [ACTIVE, CANCELLING, CANCELLED, COMPLETED, FAILED]
     ExecutionStatus:
+      description: Current lifecycle state of a concrete job execution.
       type: string
       enum: [PENDING, LEASED, SUCCEEDED, FAILED]
     DeliveryType:
+      description: Mechanism used to deliver executions to the target service.
       type: string
       enum: [PULL, HTTP_CALLBACK]
     CreateJobRequest:
+      description: Parameters required to register a new scheduled job.
       type: object
       required: [targetService, taskName, idempotencyKey, parameters, schedule, delivery]
       properties:
-        targetService: { $ref: '#/components/schemas/ServiceName' }
-        taskName: { $ref: '#/components/schemas/TaskName' }
-        idempotencyKey: { type: string, minLength: 1, maxLength: 256 }
-        parameters: { $ref: '#/components/schemas/JsonContainer' }
-        schedule: { $ref: '#/components/schemas/Schedule' }
-        delivery: { $ref: '#/components/schemas/Delivery' }
-        retryPolicy: { $ref: '#/components/schemas/RetryPolicy' }
-        executionPolicy: { $ref: '#/components/schemas/ExecutionPolicy' }
+        targetService: { $ref: '#/components/schemas/ServiceName', description: Service responsible for executing the task. }
+        taskName: { $ref: '#/components/schemas/TaskName', description: Name of the task to execute. }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 256, description: Producer-scoped key used to deduplicate job registration. }
+        parameters: { $ref: '#/components/schemas/JsonContainer', description: Application-specific parameters passed to each execution. }
+        schedule: { $ref: '#/components/schemas/Schedule', description: Rules that determine when executions are created. }
+        delivery: { $ref: '#/components/schemas/Delivery', description: Mechanism used to deliver executions. }
+        retryPolicy: { $ref: '#/components/schemas/RetryPolicy', description: Optional retry behavior; server defaults apply when omitted. }
+        executionPolicy: { $ref: '#/components/schemas/ExecutionPolicy', description: Optional constraints for concurrent executions. }
     Schedule:
+      description: Polymorphic definition of when a job must run.
       oneOf:
         - $ref: '#/components/schemas/ImmediateSchedule'
         - $ref: '#/components/schemas/AtSchedule'
@@ -297,35 +305,40 @@ components:
           INTERVAL: '#/components/schemas/IntervalSchedule'
           CRON: '#/components/schemas/CronSchedule'
     ImmediateSchedule:
+      description: Schedule that creates one execution immediately.
       type: object
       required: [type]
       properties:
-        type: { type: string, const: IMMEDIATE }
+        type: { type: string, const: IMMEDIATE, description: Schedule discriminator. }
     AtSchedule:
+      description: Schedule that creates one execution at a specified instant.
       type: object
       required: [type, runAt]
       properties:
-        type: { type: string, const: AT }
-        runAt: { type: string, format: date-time }
+        type: { type: string, const: AT, description: Schedule discriminator. }
+        runAt: { type: string, format: date-time, description: Requested execution time in RFC 3339 format. }
     IntervalSchedule:
+      description: Recurring schedule with a fixed interval between planned executions.
       type: object
       required: [type, everySeconds]
       properties:
-        type: { type: string, const: INTERVAL }
-        everySeconds: { type: integer, format: int64, minimum: 1 }
-        startAt: { type: string, format: date-time }
-        maxExecutions: { type: integer, format: int64, minimum: 1 }
-        endAt: { type: string, format: date-time }
+        type: { type: string, const: INTERVAL, description: Schedule discriminator. }
+        everySeconds: { type: integer, format: int64, minimum: 1, description: Number of seconds between planned executions. }
+        startAt: { type: string, format: date-time, description: Optional first execution time; defaults to immediate execution. }
+        maxExecutions: { type: integer, format: int64, minimum: 1, description: Optional maximum number of executions created for the job. }
+        endAt: { type: string, format: date-time, description: Optional inclusive upper bound for planned execution times. }
     CronSchedule:
+      description: Recurring schedule defined by a six-field cron expression and IANA time zone.
       type: object
       required: [type, expression, timezone]
       properties:
-        type: { type: string, const: CRON }
-        expression: { type: string, minLength: 11, maxLength: 128 }
-        timezone: { type: string, minLength: 1, maxLength: 128 }
-        maxExecutions: { type: integer, format: int64, minimum: 1 }
-        endAt: { type: string, format: date-time }
+        type: { type: string, const: CRON, description: Schedule discriminator. }
+        expression: { type: string, minLength: 11, maxLength: 128, description: Six fields in second minute hour day-of-month month day-of-week order. }
+        timezone: { type: string, minLength: 1, maxLength: 128, description: IANA time-zone name used to evaluate the cron expression. }
+        maxExecutions: { type: integer, format: int64, minimum: 1, description: Optional maximum number of executions created for the job. }
+        endAt: { type: string, format: date-time, description: Optional inclusive upper bound for planned execution times. }
     Delivery:
+      description: Polymorphic execution delivery configuration.
       oneOf:
         - $ref: '#/components/schemas/PullDelivery'
         - $ref: '#/components/schemas/HttpCallbackDelivery'
@@ -335,167 +348,189 @@ components:
           PULL: '#/components/schemas/PullDelivery'
           HTTP_CALLBACK: '#/components/schemas/HttpCallbackDelivery'
     PullDelivery:
+      description: Delivery configuration for executions claimed by pull workers.
       type: object
       required: [type]
       properties:
-        type: { type: string, const: PULL }
+        type: { type: string, const: PULL, description: Delivery discriminator. }
     HttpCallbackDelivery:
+      description: Delivery configuration for executions invoked through an HTTP callback.
       type: object
       required: [type, method, url, parametersType]
       properties:
-        type: { type: string, const: HTTP_CALLBACK }
-        method: { type: string, enum: [GET, POST, PUT] }
-        url: { type: string, format: uri, maxLength: 2048 }
-        parametersType: { type: string, enum: [QUERY, FORM_URLENCODED, JSON] }
-        secretRef: { type: string, minLength: 1, maxLength: 256 }
+        type: { type: string, const: HTTP_CALLBACK, description: Delivery discriminator. }
+        method: { type: string, enum: [GET, POST, PUT], description: HTTP method used to invoke the callback. }
+        url: { type: string, format: uri, maxLength: 2048, description: Absolute URL invoked for each execution attempt. }
+        parametersType: { type: string, enum: [QUERY, FORM_URLENCODED, JSON], description: Encoding used to pass execution parameters to the callback. }
+        secretRef: { type: string, minLength: 1, maxLength: 256, description: Optional reference to a configured Authorization header value. }
         retryableStatuses:
+          description: Additional HTTP response statuses that should trigger a retry.
           type: array
           maxItems: 100
           items: { type: integer, minimum: 400, maximum: 599 }
     RetryPolicy:
+      description: Retry limits and exponential-backoff parameters for failed attempts.
       type: object
       properties:
-        maxAttempts: { type: integer, minimum: 1, maximum: 100, default: 5 }
-        initialDelaySeconds: { type: integer, format: int64, minimum: 0, default: 5 }
-        multiplier: { type: number, format: double, minimum: 1, maximum: 100, default: 2.0 }
-        maxDelaySeconds: { type: integer, format: int64, minimum: 0, default: 300 }
-        jitter: { type: number, format: double, minimum: 0, maximum: 1, default: 0.2 }
+        maxAttempts: { type: integer, minimum: 1, maximum: 100, default: 5, description: Maximum number of attempts including the initial attempt. }
+        initialDelaySeconds: { type: integer, format: int64, minimum: 0, default: 5, description: Delay before the first retry in seconds. }
+        multiplier: { type: number, format: double, minimum: 1, maximum: 100, default: 2.0, description: Multiplier applied to the delay after each failed attempt. }
+        maxDelaySeconds: { type: integer, format: int64, minimum: 0, default: 300, description: Maximum retry delay in seconds. }
+        jitter: { type: number, format: double, minimum: 0, maximum: 1, default: 0.2, description: Random proportional variation applied to each retry delay. }
     ExecutionPolicy:
+      description: Constraints controlling how recurring job executions may overlap.
       type: object
       properties:
-        allowOverlap: { type: boolean, default: false }
+        allowOverlap: { type: boolean, default: false, description: Whether another execution may be created while a previous one is pending or leased. }
     Job:
+      description: Persistent job definition and its current scheduling state.
       type: object
       required: [id, producerService, targetService, taskName, parameters, schedule, delivery, retryPolicy, executionPolicy, status, createdAt, updatedAt, executionCount]
       properties:
-        id: { type: string, format: uuid }
-        producerService: { $ref: '#/components/schemas/ServiceName' }
-        targetService: { $ref: '#/components/schemas/ServiceName' }
-        taskName: { $ref: '#/components/schemas/TaskName' }
-        idempotencyKey: { type: string }
-        parameters: { $ref: '#/components/schemas/JsonContainer' }
-        schedule: { $ref: '#/components/schemas/Schedule' }
-        delivery: { $ref: '#/components/schemas/Delivery' }
-        retryPolicy: { $ref: '#/components/schemas/RetryPolicy' }
-        executionPolicy: { $ref: '#/components/schemas/ExecutionPolicy' }
-        status: { $ref: '#/components/schemas/JobStatus' }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-        nextRunAt: { type: string, format: date-time }
-        executionCount: { type: integer, format: int64 }
+        id: { type: string, format: uuid, description: Unique job identifier. }
+        producerService: { $ref: '#/components/schemas/ServiceName', description: Service that registered the job. }
+        targetService: { $ref: '#/components/schemas/ServiceName', description: Service responsible for executing the task. }
+        taskName: { $ref: '#/components/schemas/TaskName', description: Name of the task to execute. }
+        idempotencyKey: { type: string, description: Producer-scoped idempotency key supplied during registration. }
+        parameters: { $ref: '#/components/schemas/JsonContainer', description: Application-specific task parameters. }
+        schedule: { $ref: '#/components/schemas/Schedule', description: Rules controlling when executions are created. }
+        delivery: { $ref: '#/components/schemas/Delivery', description: Mechanism used to deliver executions. }
+        retryPolicy: { $ref: '#/components/schemas/RetryPolicy', description: Effective retry policy including server defaults. }
+        executionPolicy: { $ref: '#/components/schemas/ExecutionPolicy', description: Effective execution concurrency policy. }
+        status: { $ref: '#/components/schemas/JobStatus', description: Current lifecycle state of the job. }
+        createdAt: { type: string, format: date-time, description: Time when the job was registered. }
+        updatedAt: { type: string, format: date-time, description: Time when the job was last updated. }
+        nextRunAt: { type: string, format: date-time, description: Next planned execution time; absent when no future execution remains. }
+        executionCount: { type: integer, format: int64, description: Number of executions created for this job. }
     Execution:
+      description: One concrete planned run of a job.
       type: object
       required: [id, jobId, producerService, targetService, taskName, parameters, scheduledAt, status, attemptCount, createdAt, updatedAt]
       properties:
-        id: { type: string, format: uuid }
-        jobId: { type: string, format: uuid }
-        producerService: { $ref: '#/components/schemas/ServiceName' }
-        targetService: { $ref: '#/components/schemas/ServiceName' }
-        taskName: { $ref: '#/components/schemas/TaskName' }
-        parameters: { $ref: '#/components/schemas/JsonContainer' }
-        scheduledAt: { type: string, format: date-time }
-        status: { $ref: '#/components/schemas/ExecutionStatus' }
-        attemptCount: { type: integer }
-        leaseUntil: { type: string, format: date-time }
-        result: { $ref: '#/components/schemas/JsonContainer' }
-        error: { type: string, maxLength: 8192 }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
+        id: { type: string, format: uuid, description: Unique execution identifier used for consumer deduplication. }
+        jobId: { type: string, format: uuid, description: Identifier of the job that created this execution. }
+        producerService: { $ref: '#/components/schemas/ServiceName', description: Service that registered the parent job. }
+        targetService: { $ref: '#/components/schemas/ServiceName', description: Service allowed to process this execution. }
+        taskName: { $ref: '#/components/schemas/TaskName', description: Name of the task to execute. }
+        parameters: { $ref: '#/components/schemas/JsonContainer', description: Snapshot of the task parameters for this execution. }
+        scheduledAt: { type: string, format: date-time, description: Planned time at which the execution becomes claimable. }
+        status: { $ref: '#/components/schemas/ExecutionStatus', description: Current lifecycle state of the execution. }
+        attemptCount: { type: integer, description: Number of attempts started for this execution. }
+        leaseUntil: { type: string, format: date-time, description: Expiration time of the current lease, if leased. }
+        result: { $ref: '#/components/schemas/JsonContainer', description: Application-specific result supplied after successful completion. }
+        error: { type: string, maxLength: 8192, description: Last recorded failure message. }
+        createdAt: { type: string, format: date-time, description: Time when the execution was created. }
+        updatedAt: { type: string, format: date-time, description: Time when the execution was last updated. }
     Attempt:
+      description: History entry for one processing attempt of an execution.
       type: object
       required: [number, startedAt]
       properties:
-        number: { type: integer, minimum: 1 }
-        startedAt: { type: string, format: date-time }
-        finishedAt: { type: string, format: date-time }
-        httpStatus: { type: integer }
-        error: { type: string, maxLength: 8192 }
+        number: { type: integer, minimum: 1, description: One-based attempt number within the execution. }
+        startedAt: { type: string, format: date-time, description: Time when processing began. }
+        finishedAt: { type: string, format: date-time, description: Time when processing finished; absent while the attempt is active. }
+        httpStatus: { type: integer, description: HTTP response status returned by a callback attempt, when applicable. }
+        error: { type: string, maxLength: 8192, description: Failure message recorded for the attempt. }
     CreateJobResponse:
+      description: Result of an idempotent job-registration request.
       type: object
       required: [code, created, job]
       properties:
-        code: { type: string, const: SUCCESS }
-        created: { type: boolean }
-        job: { $ref: '#/components/schemas/Job' }
+        code: { type: string, const: SUCCESS, description: Stable success code. }
+        created: { type: boolean, description: Whether this request created a new job rather than returning an idempotent replay. }
+        job: { $ref: '#/components/schemas/Job', description: Newly created or previously registered job. }
     GetJobResponse:
+      description: Successful response containing one job.
       type: object
       required: [code, job]
       properties:
-        code: { type: string, const: SUCCESS }
-        job: { $ref: '#/components/schemas/Job' }
+        code: { type: string, const: SUCCESS, description: Stable success code. }
+        job: { $ref: '#/components/schemas/Job', description: Requested job. }
     ListJobsResponse:
+      description: Paginated collection of jobs visible to the authenticated service.
       type: object
       required: [code, items]
       properties:
-        code: { type: string, const: SUCCESS }
-        items: { type: array, items: { $ref: '#/components/schemas/Job' } }
-        nextCursor: { type: string }
+        code: { type: string, const: SUCCESS, description: Stable success code. }
+        items: { type: array, description: Jobs in the current page., items: { $ref: '#/components/schemas/Job' } }
+        nextCursor: { type: string, description: Opaque cursor for the next page; absent on the final page. }
     ListExecutionsResponse:
+      description: Paginated collection of executions belonging to a job.
       type: object
       required: [code, items]
       properties:
-        code: { type: string, const: SUCCESS }
-        items: { type: array, items: { $ref: '#/components/schemas/Execution' } }
-        nextCursor: { type: string }
+        code: { type: string, const: SUCCESS, description: Stable success code. }
+        items: { type: array, description: Executions in the current page., items: { $ref: '#/components/schemas/Execution' } }
+        nextCursor: { type: string, description: Opaque cursor for the next page; absent on the final page. }
     GetExecutionResponse:
+      description: Successful response containing an execution and its attempt history.
       type: object
       required: [code, execution, attempts]
       properties:
-        code: { type: string, const: SUCCESS }
-        execution: { $ref: '#/components/schemas/Execution' }
-        attempts: { type: array, items: { $ref: '#/components/schemas/Attempt' } }
+        code: { type: string, const: SUCCESS, description: Stable success code. }
+        execution: { $ref: '#/components/schemas/Execution', description: Requested execution. }
+        attempts: { type: array, description: Attempts ordered by their one-based number., items: { $ref: '#/components/schemas/Attempt' } }
     ClaimExecutionsRequest:
+      description: Filters and long-polling options used by a pull worker to claim executions.
       type: object
       properties:
         taskNames:
+          description: Optional task-name allowlist; all task names are eligible when omitted or empty.
           type: array
           maxItems: 100
           items: { $ref: '#/components/schemas/TaskName' }
-        maxItems: { type: integer, minimum: 1, maximum: 100, default: 1 }
-        waitSeconds: { type: integer, minimum: 0, maximum: 30, default: 30 }
+        maxItems: { type: integer, minimum: 1, maximum: 100, default: 1, description: Maximum number of executions to claim. }
+        waitSeconds: { type: integer, minimum: 0, maximum: 30, default: 30, description: Maximum long-poll duration in seconds. }
     ClaimedExecution:
+      description: Execution returned to a pull worker together with its lease credentials.
       type: object
       required: [execution, leaseToken, leaseUntil]
       properties:
-        execution: { $ref: '#/components/schemas/Execution' }
-        leaseToken: { type: string, format: uuid }
-        leaseUntil: { type: string, format: date-time }
+        execution: { $ref: '#/components/schemas/Execution', description: Execution leased to the worker. }
+        leaseToken: { type: string, format: uuid, description: Opaque token required for heartbeat and completion requests. }
+        leaseUntil: { type: string, format: date-time, description: Time at which the lease expires unless extended. }
     ClaimExecutionsResponse:
+      description: Successful response containing executions leased to a pull worker.
       type: object
       required: [code, items]
       properties:
-        code: { type: string, const: SUCCESS }
-        items: { type: array, items: { $ref: '#/components/schemas/ClaimedExecution' } }
+        code: { type: string, const: SUCCESS, description: Stable success code. }
+        items: { type: array, description: Executions claimed by this request; may be empty after timeout., items: { $ref: '#/components/schemas/ClaimedExecution' } }
     LeaseRequest:
+      description: Credentials used to operate on an active execution lease.
       type: object
       required: [leaseToken]
       properties:
-        leaseToken: { type: string, format: uuid }
+        leaseToken: { type: string, format: uuid, description: Opaque token returned when the execution was claimed. }
     LeaseResponse:
+      description: Successful response returned after extending an execution lease.
       type: object
       required: [code, leaseUntil]
       properties:
-        code: { type: string, const: SUCCESS }
-        leaseUntil: { type: string, format: date-time }
+        code: { type: string, const: SUCCESS, description: Stable success code. }
+        leaseUntil: { type: string, format: date-time, description: New lease expiration time. }
     CompleteExecutionRequest:
+      description: Outcome reported by a pull worker for a leased execution attempt.
       type: object
       required: [leaseToken, outcome]
       properties:
-        leaseToken: { type: string, format: uuid }
-        outcome: { type: string, enum: [SUCCEEDED, FAILED] }
-        retryable: { type: boolean, default: true }
-        result: { $ref: '#/components/schemas/JsonContainer' }
-        error: { type: string, maxLength: 8192 }
+        leaseToken: { type: string, format: uuid, description: Opaque token proving ownership of the active lease. }
+        outcome: { type: string, enum: [SUCCEEDED, FAILED], description: Final outcome of the current attempt. }
+        retryable: { type: boolean, default: true, description: Whether a failed attempt may be retried under the job retry policy. }
+        result: { $ref: '#/components/schemas/JsonContainer', description: Application-specific result for a successful attempt. }
+        error: { type: string, maxLength: 8192, description: Concise failure message for a failed attempt. }
     ErrorResponse:
+      description: Standard error envelope returned by business endpoints.
       type: object
       required: [code, message, requestId]
       properties:
-        code: { type: string }
-        message: { type: string }
-        requestId: { type: string }
-        details: { $ref: '#/components/schemas/JsonContainer' }
+        code: { type: string, description: Stable machine-readable error code. }
+        message: { type: string, description: Human-readable explanation of the error. }
+        requestId: { type: string, description: Request identifier used to correlate logs and diagnostics. }
+        details: { $ref: '#/components/schemas/JsonContainer', description: Optional structured error details. }
     HealthResponse:
+      description: Health status returned by liveness and readiness probes.
       type: object
       required: [status]
       properties:
-        status: { type: string, enum: [UP] }
+        status: { type: string, enum: [UP], description: Current health state of the service. }
