@@ -13,7 +13,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import infrastructure.database.DatabaseConfig
 import infrastructure.database.PostgresDatabase
-import infrastructure.database.PostgresSchedulerTransactionManager
+import features.scheduling.PostgresSchedulerTransactionManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,16 +22,34 @@ import kotlin.test.assertTrue
 class PostgresSchedulerServiceTest {
     private val enabled = getEnvVal("INSTANTJOB_TEST_POSTGRES") == "true"
 
+    @OptIn(DelicateKormiumApi::class)
+    @Test
+    fun appliesVersionedKormiumMigrations() {
+        if (!enabled) return
+        database().use { database ->
+            val appliedIds = database.handle.autocommit {
+                execute(
+                    "SELECT id FROM kormium_migrations ORDER BY idx",
+                    emptyMap(),
+                    emptyList(),
+                ) { it.getString(0)!! }
+            }
+
+            assertEquals(
+                listOf("001-create-jobs", "002-create-executions", "003-create-attempts"),
+                appliedIds,
+            )
+        }
+    }
+
     @Test
     fun persistsAcrossRepositoryRestart() = runBlocking {
         if (!enabled) return@runBlocking
         database().use { firstDb ->
             clean(firstDb)
-            firstDb.migrate()
             val first = service(firstDb)
             val created = first.create("producer", request("persist"))
             database().use { secondDb ->
-                secondDb.migrate()
                 val restored = service(secondDb).getJob("producer", created.job.id)
                 assertEquals(created.job.id, restored.id)
             }
@@ -43,7 +61,6 @@ class PostgresSchedulerServiceTest {
         if (!enabled) return@runBlocking
         database().use { db ->
             clean(db)
-            db.migrate()
             val repositories = List(4) { service(db) }
             val creates = coroutineScope {
                 repositories.map { repository ->
@@ -71,7 +88,6 @@ class PostgresSchedulerServiceTest {
         if (!enabled) return@runBlocking
         database().use { db ->
             clean(db)
-            db.migrate()
             val repository = service(db)
             repository.create("producer", request("lease"))
             val claimed = repository.claim("worker", null, 1, 0).single()
@@ -94,13 +110,11 @@ class PostgresSchedulerServiceTest {
         if (!enabled) return@runBlocking
         database().use { firstDb ->
             clean(firstDb)
-            firstDb.migrate()
             val first = service(firstDb, leaseSeconds = 0)
             first.create("producer", request("restart-claim"))
             val claimed = first.claim("worker", null, 1, 0).single()
 
             database().use { secondDb ->
-                secondDb.migrate()
                 val second = service(secondDb)
                 second.tick()
                 val recovered = second.getExecution("worker", claimed.execution.id)
@@ -125,7 +139,9 @@ class PostgresSchedulerServiceTest {
     @OptIn(DelicateKormiumApi::class)
     private fun clean(database: PostgresDatabase) {
         database.handle.autocommit {
-            executeUpdate("DROP TABLE IF EXISTS attempts,executions,jobs CASCADE", emptyMap(), emptyList())
+            executeUpdate("DELETE FROM attempts", emptyMap(), emptyList())
+            executeUpdate("DELETE FROM executions", emptyMap(), emptyList())
+            executeUpdate("DELETE FROM jobs", emptyMap(), emptyList())
         }
     }
 }

@@ -101,6 +101,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
                 implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1")
                 implementation("io.github.kormium:kormium-postgres:0.12.0")
+                implementation("io.github.kormium:kormium-migrate:0.12.0")
             }
         }
 

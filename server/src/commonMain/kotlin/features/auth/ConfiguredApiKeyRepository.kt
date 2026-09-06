@@ -1,7 +1,4 @@
-package infrastructure.auth
-
-import features.auth.ApiKeyRepository
-import features.auth.ServicePrincipal
+package features.auth
 
 class ConfiguredApiKeyRepository private constructor(
     private val keys: Map<String, ServicePrincipal>,

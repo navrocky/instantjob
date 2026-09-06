@@ -25,11 +25,11 @@ The features listed above are implemented in the following components:
 |---|---|
 | immediate, AT, interval, and cron schedules | [`SchedulePlanner.kt`](server/src/commonMain/kotlin/features/scheduling/SchedulePlanner.kt) and [`ScheduleCalculator.kt`](server/src/commonMain/kotlin/features/scheduling/ScheduleCalculator.kt) |
 | scheduling, idempotency, leases, retries, and state transitions | [`SchedulerService.kt`](server/src/commonMain/kotlin/features/scheduling/SchedulerService.kt) |
-| PostgreSQL jobs, executions, and attempts persistence | [`PostgresRepositories.kt`](server/src/commonMain/kotlin/infrastructure/database/PostgresRepositories.kt) |
+| PostgreSQL jobs, executions, and attempts persistence | Feature-specific `Postgres*Repository` adapters under [`features`](server/src/commonMain/kotlin/features) |
 | HTTP callback application workflow and infrastructure client | [`CallbackDispatcher.kt`](server/src/commonMain/kotlin/features/callbacks/CallbackDispatcher.kt) and [`KtorCallbackClient.kt`](server/src/commonMain/kotlin/infrastructure/http/KtorCallbackClient.kt) |
-| REST handlers, DTO mapping, and API-key service identity | [`ApiHandlers.kt`](server/src/commonMain/kotlin/presentation/rest/ApiHandlers.kt), [`AuthenticationService.kt`](server/src/commonMain/kotlin/features/auth/AuthenticationService.kt), and [`ConfiguredApiKeyRepository.kt`](server/src/commonMain/kotlin/infrastructure/auth/ConfiguredApiKeyRepository.kt) |
+| REST handlers, DTO mapping, and API-key service identity | [`ApiHandlers.kt`](server/src/commonMain/kotlin/presentation/rest/ApiHandlers.kt), [`AuthenticationService.kt`](server/src/commonMain/kotlin/features/auth/AuthenticationService.kt), and [`ConfiguredApiKeyRepository.kt`](server/src/commonMain/kotlin/features/auth/ConfiguredApiKeyRepository.kt) |
 | generated routes and DTOs | [`api/openapi.yaml`](api/openapi.yaml) and the `generateOpenApiServer` Gradle task |
-| database schema | [`V001__initial_schema.sql`](server/src/commonMain/resources/db/migration/V001__initial_schema.sql) |
+| database schema and migration registry | Versioned Kormium migrations under [`infrastructure/database/migrations`](server/src/commonMain/kotlin/infrastructure/database/migrations) |
 
 Cron expressions contain six fields in the order `second minute hour day-of-month month day-of-week`. Numeric wildcards, lists, ranges, and steps are supported. Months use `1..12`; weekdays use `0..7`, with both `0` and `7` representing Sunday. Named months and weekdays are not supported.
 

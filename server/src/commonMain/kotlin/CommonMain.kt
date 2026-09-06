@@ -27,8 +27,8 @@ import infrastructure.log.LoggerFactory
 import infrastructure.log.logger
 import infrastructure.database.DatabaseConfig
 import infrastructure.database.PostgresDatabase
-import infrastructure.database.PostgresSchedulerTransactionManager
-import infrastructure.auth.ConfiguredApiKeyRepository
+import features.scheduling.PostgresSchedulerTransactionManager
+import features.auth.ConfiguredApiKeyRepository
 import common.DomainErrorKind
 import common.DomainException
 import common.DelayProvider
@@ -78,7 +78,6 @@ fun commonMain() {
                 poolSize = config.getOrDefault("database.poolSize", "10").toInt(),
             )
         )
-        postgresDatabase.migrate()
         val schedulerStore = DefaultSchedulerService(
             transactions = PostgresSchedulerTransactionManager(postgresDatabase),
             clock = Clock.System,

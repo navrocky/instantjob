@@ -2,7 +2,6 @@ package features.auth
 
 import common.DomainErrorKind
 import common.DomainException
-import infrastructure.auth.ConfiguredApiKeyRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

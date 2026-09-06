@@ -13,10 +13,10 @@ The active API uses generated Ktor routes and models from `api/openapi.yaml`. `D
 
 - `server/src/commonMain/kotlin/CommonMain.kt`: server composition, Ktor plugins, configuration, and error mapping.
 - `api/openapi.yaml`: OpenAPI 3.2 source of truth for the public API.
-- `server/src/commonMain/kotlin/features/`: flat feature slices containing domain models, application services, and core ports.
+- `server/src/commonMain/kotlin/features/`: flat feature slices containing domain models, application services, core ports, and their feature-specific adapters.
 - `server/src/commonMain/kotlin/presentation/rest/`: REST handlers and explicit generated-DTO/domain mappings.
-- `server/src/commonMain/kotlin/infrastructure/database/`: PostgreSQL repository and transaction adapters.
-- `server/src/commonMain/kotlin/infrastructure/auth/`: configuration-backed authentication adapters.
+- `server/src/commonMain/kotlin/infrastructure/database/`: shared PostgreSQL connection and persistence mapping infrastructure; feature-specific adapters are colocated with their repository interfaces.
+- `server/src/commonMain/kotlin/infrastructure/database/migrations/`: ordered Kormium migrations, one migration per file; applied migrations are immutable.
 - `server/src/commonMain/kotlin/infrastructure/http/`: Ktor HTTP and callback-delivery adapters.
 - `server/src/commonMain/kotlin/common/`: request context, IDs, and JSON response envelopes.
 - `server/src/commonMain/kotlin/infrastructure/config/`: hierarchical configuration and environment backend.
