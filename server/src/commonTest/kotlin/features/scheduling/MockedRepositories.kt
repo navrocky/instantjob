@@ -14,6 +14,7 @@ import features.jobs.JobRepository
 import features.jobs.StoredJob
 import kotlin.time.Clock
 
+/** In-memory job repository used by scheduler unit tests. */
 class MockedJobRepository(
     private val rows: LinkedHashMap<String, StoredJob> = linkedMapOf(),
     private val clock: Clock = Clock.System,
@@ -63,6 +64,7 @@ class MockedJobRepository(
     }
 }
 
+/** In-memory execution repository used by scheduler unit tests. */
 class MockedExecutionRepository(
     private val rows: LinkedHashMap<String, StoredExecution> = linkedMapOf(),
     private val deliveryTypes: MutableMap<String, String> = mutableMapOf(),
@@ -117,6 +119,7 @@ class MockedExecutionRepository(
     }
 }
 
+/** In-memory attempt repository used by scheduler unit tests. */
 class MockedAttemptRepository(
     private val rows: MutableMap<String, MutableList<Attempt>> = mutableMapOf(),
 ) : AttemptRepository {
@@ -137,6 +140,7 @@ class MockedAttemptRepository(
     }
 }
 
+/** Transaction manager that snapshots in-memory repositories and restores them after rollback. */
 class MockedSchedulerTransactionManager(clock: Clock = Clock.System) : SchedulerTransactionManager {
     private val mutex = Mutex()
     private val jobRows = linkedMapOf<String, StoredJob>()

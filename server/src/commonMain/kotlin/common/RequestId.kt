@@ -1,7 +1,10 @@
 package common
 
-/** @property id Correlation identifier propagated through a request context. */
-data class RequestId(val id: String) {
+/** Identifies a request across service boundaries and log records. */
+data class RequestId(
+    /** Correlation identifier propagated through a request context. */
+    val id: String,
+) {
     override fun toString(): String {
         return "{$id}"
     }

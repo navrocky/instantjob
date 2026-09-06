@@ -5,20 +5,35 @@ sealed interface JsonValue {
     /** JSON null value. */
     data object Null : JsonValue
 
-    /** @property value Boolean JSON value. */
-    data class BooleanValue(val value: Boolean) : JsonValue
+    /** Represents a Boolean JSON value. */
+    data class BooleanValue(
+        /** Boolean value. */
+        val value: Boolean,
+    ) : JsonValue
 
-    /** @property value Exact textual representation of a JSON number. */
-    data class NumberValue(val value: String) : JsonValue
+    /** Represents a JSON number without losing its original precision. */
+    data class NumberValue(
+        /** Exact textual representation of the number. */
+        val value: String,
+    ) : JsonValue
 
-    /** @property value String JSON value. */
-    data class StringValue(val value: String) : JsonValue
+    /** Represents a string JSON value. */
+    data class StringValue(
+        /** String value. */
+        val value: String,
+    ) : JsonValue
 
-    /** @property values Ordered elements of a JSON array. */
-    data class ArrayValue(val values: List<JsonValue>) : JsonValue
+    /** Represents a JSON array. */
+    data class ArrayValue(
+        /** Ordered elements of the array. */
+        val values: List<JsonValue>,
+    ) : JsonValue
 
-    /** @property values Properties of a JSON object indexed by name. */
-    data class ObjectValue(val values: Map<String, JsonValue>) : JsonValue
+    /** Represents a JSON object. */
+    data class ObjectValue(
+        /** Properties of the object indexed by name. */
+        val values: Map<String, JsonValue>,
+    ) : JsonValue
 }
 
 /** JSON object used for task parameters and execution results. */

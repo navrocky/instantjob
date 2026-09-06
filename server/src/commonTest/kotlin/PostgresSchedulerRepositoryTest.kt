@@ -4,6 +4,8 @@ import features.executions.ExecutionStatus
 import features.jobs.CreateJobCommand
 import features.jobs.Delivery
 import features.jobs.Schedule
+import features.jobs.RetryPolicy
+import common.JsonValue
 import infrastructure.config.getEnvVal
 import io.github.kormium.DelicateKormiumApi
 import io.github.kormium.autocommit
@@ -18,6 +20,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
 
 class PostgresSchedulerServiceTest {
     private val enabled = getEnvVal("INSTANTJOB_TEST_POSTGRES") == "true"
@@ -80,6 +84,43 @@ class PostgresSchedulerServiceTest {
             }
             assertEquals(1, claims.size)
             assertEquals(ExecutionStatus.LEASED, claims.single().execution.status)
+        }
+    }
+
+    @Test
+    fun ormRoundTripsComplexJobBody() = runBlocking {
+        if (!enabled) return@runBlocking
+        database().use { db ->
+            clean(db)
+            val service = service(db)
+            val request = CreateJobCommand(
+                targetService = "callback-worker",
+                taskName = "complex-task",
+                idempotencyKey = "complex-body",
+                parameters = mapOf(
+                    "nested" to JsonValue.ObjectValue(
+                        mapOf("number" to JsonValue.NumberValue("42.50"), "enabled" to JsonValue.BooleanValue(true))
+                    )
+                ),
+                schedule = Schedule.At(Clock.System.now() + 1.hours),
+                delivery = Delivery.HttpCallback(
+                    method = Delivery.HttpCallback.Method.POST,
+                    url = "https://worker.example/tasks",
+                    parametersType = Delivery.HttpCallback.ParametersType.JSON,
+                    secretRef = "worker-secret",
+                    retryableStatuses = listOf(409, 429),
+                ),
+                retryPolicy = RetryPolicy(maxAttempts = 7, jitter = 0.1),
+            )
+
+            val created = service.create("producer", request).job
+            val restored = service.getJob("producer", created.id)
+
+            assertEquals(created.id, restored.id)
+            assertEquals(request.parameters, restored.parameters)
+            assertEquals(request.schedule, restored.schedule)
+            assertEquals(request.delivery, restored.delivery)
+            assertEquals(request.retryPolicy, restored.retryPolicy)
         }
     }
 

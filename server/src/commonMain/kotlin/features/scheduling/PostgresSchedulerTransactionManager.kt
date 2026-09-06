@@ -11,12 +11,14 @@ import infrastructure.database.PostgresDatabase
 import io.github.kormium.Scope
 import io.github.kormium.transaction
 
+/** Creates PostgreSQL repository adapters that share the active Kormium transaction. */
 private class PostgresSchedulerUnitOfWork(scope: Scope<InstantJobCatalog>) : SchedulerUnitOfWork {
     override val jobs: JobRepository = PostgresJobRepository(scope)
     override val executions: ExecutionRepository = PostgresExecutionRepository(scope)
     override val attempts: AttemptRepository = PostgresAttemptRepository(scope)
 }
 
+/** Runs scheduler units of work inside PostgreSQL transactions. */
 class PostgresSchedulerTransactionManager(
     private val database: PostgresDatabase,
 ) : SchedulerTransactionManager {

@@ -16,6 +16,7 @@ class CallbackDispatcher(
     private val delayProvider: DelayProvider,
     private val isCancellation: (Throwable) -> Boolean,
 ) : AutoCloseable {
+    /** Continuously claims and dispatches callback executions until the coroutine is cancelled. */
     suspend fun runForever() {
         while (true) {
             try {

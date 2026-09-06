@@ -1,12 +1,17 @@
 package features.jobs
 
 import infrastructure.database.InstantJobCatalog
-import infrastructure.database.PersistenceJson
 import io.github.kormium.DelicateKormiumApi
 import io.github.kormium.Scope
+import io.github.kormium.and
+import io.github.kormium.eq
+import io.github.kormium.inList
+import io.github.kormium.or
+import kotlin.uuid.Uuid
 
-@OptIn(DelicateKormiumApi::class)
+/** Stores jobs in PostgreSQL through a transaction-bound Kormium scope. */
 class PostgresJobRepository(private val scope: Scope<InstantJobCatalog>) : JobRepository {
+    @OptIn(DelicateKormiumApi::class)
     override fun lockIdempotencyKey(producerService: String, idempotencyKey: String) {
         scope.execute(
             "SELECT pg_advisory_xact_lock(hashtext(:key))",
@@ -16,19 +21,21 @@ class PostgresJobRepository(private val scope: Scope<InstantJobCatalog>) : JobRe
     }
 
     override fun findByIdempotencyKey(producerService: String, idempotencyKey: String): StoredJob? =
-        scope.execute(
-            "SELECT request_fingerprint, body::text FROM jobs WHERE producer_service=:producer AND idempotency_key=:key",
-            mapOf("producer" to producerService, "key" to idempotencyKey),
-            emptyList(),
-        ) { StoredJob(PersistenceJson.decodeJob(it.getString(1)!!), it.getString(0)!!) }.firstOrNull()
+        with(scope) {
+            JobsTable.findOne {
+                where {
+                    (JobsTable.producerService eq producerService) and
+                            (JobsTable.idempotencyKey eq idempotencyKey)
+                }
+            }
+        }?.toStoredJob()
 
     override fun findById(id: String, forUpdate: Boolean): Job? {
-        val lock = if (forUpdate) " FOR UPDATE" else ""
-        return scope.execute(
-            "SELECT body::text FROM jobs WHERE id=CAST(:id AS uuid)$lock",
-            mapOf("id" to id),
-            emptyList(),
-        ) { PersistenceJson.decodeJob(it.getString(0)!!) }.firstOrNull()
+        val uuid = Uuid.parse(id)
+        if (forUpdate && !lockById(uuid)) return null
+        return with(scope) { JobsTable.findOne { where { JobsTable.id eq uuid } } }
+            ?.toStoredJob()
+            ?.job
     }
 
     override fun listVisible(
@@ -38,49 +45,52 @@ class PostgresJobRepository(private val scope: Scope<InstantJobCatalog>) : JobRe
         status: JobStatus?,
         offset: Int,
         limit: Int,
-    ): List<Job> {
-        val clauses = mutableListOf("(producer_service=:service OR target_service=:service)")
-        val params = mutableMapOf<String, Any?>("service" to service, "limit" to limit, "offset" to offset)
-        targetService?.let { clauses += "target_service=:target"; params["target"] = it }
-        taskName?.let { clauses += "task_name=:task"; params["task"] = it }
-        status?.let { clauses += "status=:status"; params["status"] = it.name }
-        return scope.execute(
-            "SELECT body::text FROM jobs WHERE ${clauses.joinToString(" AND ")} ORDER BY created_at,id LIMIT :limit OFFSET :offset",
-            params,
-            emptyList(),
-        ) { PersistenceJson.decodeJob(it.getString(0)!!) }
+    ): List<Job> = with(scope) {
+        JobsTable.find {
+            where { (JobsTable.producerService eq service) or (JobsTable.targetService eq service) }
+            targetService?.let { value -> where { JobsTable.targetService eq value } }
+            taskName?.let { value -> where { JobsTable.taskName eq value } }
+            status?.let { value -> where { JobsTable.status eq value } }
+            orderBy ASC JobsTable.createdAt
+            orderBy ASC JobsTable.id
+            this.offset = offset
+            this.limit = limit
+        }
+    }.map { it.toStoredJob().job }
+
+    override fun findDue(limit: Int): List<Job> {
+        val ids = lockDueIds(limit)
+        if (ids.isEmpty()) return emptyList()
+        val byId = with(scope) {
+            JobsTable.find { where { JobsTable.id inList ids } }
+        }.associateBy { it.id }
+        return ids.mapNotNull { byId[it]?.toStoredJob()?.job }
     }
 
-    override fun findDue(limit: Int): List<Job> = scope.execute(
-        "SELECT body::text FROM jobs WHERE status='ACTIVE' AND next_run_at<=now() ORDER BY next_run_at FOR UPDATE SKIP LOCKED LIMIT :limit",
-        mapOf("limit" to limit),
-        emptyList(),
-    ) { PersistenceJson.decodeJob(it.getString(0)!!) }
-
     override fun insert(job: Job, requestFingerprint: String) {
-        val delivery = if (job.delivery is Delivery.Pull) "PULL" else "HTTP_CALLBACK"
-        scope.executeUpdate(
-            "INSERT INTO jobs(id,producer_service,target_service,task_name,idempotency_key,request_fingerprint,status,delivery_type,next_run_at,execution_count,body,created_at,updated_at) VALUES(CAST(:id AS uuid),:producer,:target,:task,:key,:fingerprint,:status,:delivery,CAST(:next AS timestamptz),:count,CAST(:body AS jsonb),CAST(:created AS timestamptz),CAST(:updated AS timestamptz))",
-            mapOf(
-                "id" to job.id, "producer" to job.producerService, "target" to job.targetService,
-                "task" to job.taskName, "key" to job.idempotencyKey, "fingerprint" to requestFingerprint,
-                "status" to job.status.name, "delivery" to delivery, "next" to job.nextRunAt?.toString(),
-                "count" to job.executionCount, "body" to PersistenceJson.encode(job),
-                "created" to job.createdAt.toString(), "updated" to job.updatedAt.toString(),
-            ),
-            emptyList(),
-        )
+        with(scope) { JobsTable.insert(job.toEntity(requestFingerprint)) }
     }
 
     override fun update(job: Job) {
-        scope.executeUpdate(
-            "UPDATE jobs SET status=:status,next_run_at=CAST(:next AS timestamptz),execution_count=:count,body=CAST(:body AS jsonb),updated_at=CAST(:updated AS timestamptz) WHERE id=CAST(:id AS uuid)",
-            mapOf(
-                "status" to job.status.name, "next" to job.nextRunAt?.toString(),
-                "count" to job.executionCount, "body" to PersistenceJson.encode(job),
-                "updated" to job.updatedAt.toString(), "id" to job.id,
-            ),
-            emptyList(),
-        )
+        val id = Uuid.parse(job.id)
+        val affected = with(scope) {
+            JobsTable.update(job.toUpdateEntity()) { where { JobsTable.id eq id } }
+        }
+        check(affected == 1L) { "Job does not exist: ${job.id}" }
     }
+
+    @OptIn(DelicateKormiumApi::class)
+    private fun lockById(id: Uuid): Boolean = scope.execute(
+        "SELECT id::text FROM jobs WHERE id=:id FOR UPDATE",
+        mapOf("id" to id),
+        emptyList(),
+    ) { it.getString(0)!! }.isNotEmpty()
+
+    @OptIn(DelicateKormiumApi::class)
+    private fun lockDueIds(limit: Int): List<Uuid> = scope.execute(
+        "SELECT id::text FROM jobs WHERE status='ACTIVE' AND next_run_at<=now() " +
+                "ORDER BY next_run_at FOR UPDATE SKIP LOCKED LIMIT :limit",
+        mapOf("limit" to limit),
+        emptyList(),
+    ) { Uuid.parse(it.getString(0)!!) }
 }

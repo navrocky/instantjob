@@ -25,7 +25,7 @@ The features listed above are implemented in the following components:
 |---|---|
 | immediate, AT, interval, and cron schedules | [`SchedulePlanner.kt`](server/src/commonMain/kotlin/features/scheduling/SchedulePlanner.kt) and [`ScheduleCalculator.kt`](server/src/commonMain/kotlin/features/scheduling/ScheduleCalculator.kt) |
 | scheduling, idempotency, leases, retries, and state transitions | [`SchedulerService.kt`](server/src/commonMain/kotlin/features/scheduling/SchedulerService.kt) |
-| PostgreSQL jobs, executions, and attempts persistence | Feature-specific `Postgres*Repository` adapters under [`features`](server/src/commonMain/kotlin/features) |
+| PostgreSQL jobs, executions, and attempts persistence | Feature-specific Kormium `Table`/`Entity` and `Postgres*Repository` adapters under [`features`](server/src/commonMain/kotlin/features) |
 | HTTP callback application workflow and infrastructure client | [`CallbackDispatcher.kt`](server/src/commonMain/kotlin/features/callbacks/CallbackDispatcher.kt) and [`KtorCallbackClient.kt`](server/src/commonMain/kotlin/infrastructure/http/KtorCallbackClient.kt) |
 | REST handlers, DTO mapping, and API-key service identity | [`ApiHandlers.kt`](server/src/commonMain/kotlin/presentation/rest/ApiHandlers.kt), [`AuthenticationService.kt`](server/src/commonMain/kotlin/features/auth/AuthenticationService.kt), and [`ConfiguredApiKeyRepository.kt`](server/src/commonMain/kotlin/features/auth/ConfiguredApiKeyRepository.kt) |
 | generated routes and DTOs | [`api/openapi.yaml`](api/openapi.yaml) and the `generateOpenApiServer` Gradle task |

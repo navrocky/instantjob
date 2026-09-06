@@ -12,10 +12,16 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+
 /** Application boundary for job scheduling and execution workflows. */
 interface JobService {
+    /** Registers a producer-owned job or returns the identical registration for the same idempotency key. */
     suspend fun create(producer: String, request: CreateJobCommand): CreateJobResult
+
+    /** Returns the job visible to [service], or throws when it is absent or inaccessible. */
     suspend fun getJob(service: String, id: String): Job
+
+    /** Lists jobs visible to [service] and returns an optional cursor for the next page. */
     suspend fun listJobs(
         service: String,
         target: String?,
@@ -25,11 +31,16 @@ interface JobService {
         limit: Int,
     ): Pair<List<Job>, String?>
 
+    /** Cancels the producer-owned job identified by [id] and returns its resulting state. */
     suspend fun cancel(service: String, id: String): Job
 }
 
+/** Application boundary for querying, claiming, and completing executions. */
 interface ExecutionService {
+    /** Returns an execution visible to [service] together with its attempt history. */
     suspend fun getExecution(service: String, id: String): Pair<Execution, List<Attempt>>
+
+    /** Lists executions for a visible job and returns an optional cursor for the next page. */
     suspend fun listExecutions(
         service: String,
         jobId: String,
@@ -37,6 +48,7 @@ interface ExecutionService {
         limit: Int,
     ): Pair<List<Execution>, String?>
 
+    /** Long-polls for pull-delivery executions assigned to [targetService] and leases returned items. */
     suspend fun claim(
         targetService: String,
         taskNames: List<String>?,
@@ -44,8 +56,13 @@ interface ExecutionService {
         waitSeconds: Int,
     ): List<ClaimedExecution>
 
+    /** Claims at most [maxItems] callback-delivery executions for the internal dispatcher. */
     suspend fun claimCallbacks(maxItems: Int): List<ClaimedExecution>
+
+    /** Extends the lease owned by [targetService] and returns its new expiration time. */
     suspend fun heartbeat(targetService: String, executionId: String, token: String): Instant
+
+    /** Completes the leased execution and returns its updated state and attempt history. */
     suspend fun complete(
         targetService: String,
         executionId: String,
@@ -53,13 +70,19 @@ interface ExecutionService {
     ): Pair<Execution, List<Attempt>>
 }
 
+/** Exposes scheduler maintenance and readiness operations. */
 interface SchedulerMaintenanceService {
+    /** Materializes due executions and recovers expired leases in one maintenance pass. */
     suspend fun tick()
+
+    /** Returns whether the scheduler persistence backend is ready. */
     fun isReady(): Boolean
 }
 
+/** Combines all job, execution, and maintenance application boundaries. */
 interface SchedulerService : JobService, ExecutionService, SchedulerMaintenanceService
 
+/** Applies scheduling, idempotency, lease, retry, and state-transition rules. */
 class DefaultSchedulerService(
     private val transactions: SchedulerTransactionManager,
     private val clock: Clock,

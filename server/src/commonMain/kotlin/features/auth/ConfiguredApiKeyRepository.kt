@@ -1,11 +1,13 @@
 package features.auth
 
+/** Reads API-key principals from application configuration. */
 class ConfiguredApiKeyRepository private constructor(
     private val keys: Map<String, ServicePrincipal>,
 ) : ApiKeyRepository {
     override fun findByApiKey(apiKey: String): ServicePrincipal? = keys[apiKey]
 
     companion object {
+        /** Parses comma-separated `key:service` entries into a configured repository. */
         fun parse(value: String): ConfiguredApiKeyRepository {
             val entries = value.split(',').filter { it.isNotBlank() }.associate { entry ->
                 val parts = entry.trim().split(':', limit = 2)

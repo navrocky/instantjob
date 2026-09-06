@@ -77,7 +77,15 @@ Preserve these existing API rules unless a task explicitly changes the contract:
 - Follow the official Kotlin style configured in `gradle.properties`.
 - Keep package names lowercase and organize code by feature, following the current layout.
 - Prefer immutable data classes and constructor-injected dependencies.
+- Give every handwritten `data class` a class-level KDoc that explains its purpose. Document each constructor property with a separate KDoc immediately above the property:
+  ```kotlin
+  /** Stored value. */
+  val value: String
+  ```
+  Do not collect property descriptions in the class KDoc with `@property` tags.
+- Give every repository and service interface a class-level KDoc and document each declared method. Describe the contract, relevant filtering or locking semantics, return value, and nullable result where applicable. Give each implementation a class-level KDoc; do not duplicate inherited method documentation on overrides unless the implementation adds behavior that callers must know about.
 - Define entity persistence through a table-specific repository interface. Provide a `Postgres*Repository` implementation in `commonMain` and a `Mocked*Repository` implementation in `commonTest`. For configuration-backed data, provide corresponding `Configured*Repository` and `Mocked*Repository` implementations.
+- Implement PostgreSQL repositories with Kormium `Table`, `Entity`, typed columns, and query/CRUD DSL. Raw SQL is allowed only for database-specific operations missing from the typed DSL, such as advisory locks and `FOR UPDATE SKIP LOCKED`; raw queries must return only identifiers and must not hydrate domain objects manually.
 - Use `kotlinx.serialization` only for transport or persistence DTOs. Domain models must remain serialization-independent.
 - Use `kotlin.time` for domain instants, durations, and clocks. Use `kotlinx.datetime` for multiplatform calendar and time-zone calculations, including cron scheduling. Avoid JVM-only APIs in `commonMain`.
 - Always call `delay` with a `Duration`, for example `delay(100.milliseconds)`, rather than using the millisecond-number overload.

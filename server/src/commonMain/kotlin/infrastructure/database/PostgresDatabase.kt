@@ -10,22 +10,19 @@ import io.github.kormium.migrate.migrate
 
 object InstantJobCatalog : Catalog
 
-/**
- * PostgreSQL connection and pool settings.
- *
- * @property host Database server host name or address.
- * @property port Database server TCP port.
- * @property name Database name.
- * @property user Database user name.
- * @property password Database user password.
- * @property poolSize Maximum number of pooled connections.
- */
+/** PostgreSQL connection and pool settings. */
 data class DatabaseConfig(
+    /** Database server host name or address. */
     val host: String,
+    /** Database server TCP port. */
     val port: Int,
+    /** Database name. */
     val name: String,
+    /** Database user name. */
     val user: String,
+    /** Database user password. */
     val password: String,
+    /** Maximum number of pooled connections. */
     val poolSize: Int,
 )
 

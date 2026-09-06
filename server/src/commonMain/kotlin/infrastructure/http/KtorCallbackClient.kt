@@ -53,6 +53,7 @@ class CallbackSecretRegistry(private val authorizationValues: Map<String, String
     }
 }
 
+/** Delivers callback requests with the Ktor HTTP client. */
 @OptIn(ExperimentalSerializationApi::class)
 class KtorCallbackClient(
     private val secrets: CallbackSecretRegistry,

@@ -8,36 +8,33 @@ sealed interface Schedule {
     /** Creates the first execution as soon as the job is registered. */
     data object Immediate : Schedule
 
-    /** Creates one execution at [runAt], or immediately when that instant is in the past. */
-    data class At(val runAt: Instant) : Schedule
+    /** Creates one execution at a specified instant. */
+    data class At(
+        /** Planned execution time; past instants are executed immediately. */
+        val runAt: Instant,
+    ) : Schedule
 
-    /**
-     * Creates executions at a fixed interval.
-     *
-     * @property everySeconds Number of seconds between execution times.
-     * @property startAt Optional first execution time; registration time is used when absent.
-     * @property maxExecutions Optional maximum number of executions.
-     * @property endAt Optional inclusive upper bound for execution times.
-     */
+    /** Creates executions at a fixed interval. */
     data class Interval(
+        /** Number of seconds between execution times. */
         val everySeconds: Long,
+        /** Optional first execution time; registration time is used when absent. */
         val startAt: Instant? = null,
+        /** Optional maximum number of executions. */
         val maxExecutions: Long? = null,
+        /** Optional inclusive upper bound for execution times. */
         val endAt: Instant? = null,
     ) : Schedule
 
-    /**
-     * Creates executions matching a six-field cron expression.
-     *
-     * @property expression Cron fields in second, minute, hour, day-of-month, month, day-of-week order.
-     * @property timezone IANA time-zone name in which the expression is evaluated.
-     * @property maxExecutions Optional maximum number of executions.
-     * @property endAt Optional inclusive upper bound for execution times.
-     */
+    /** Creates executions matching a six-field cron expression. */
     data class Cron(
+        /** Cron fields in second, minute, hour, day-of-month, month, day-of-week order. */
         val expression: String,
+        /** IANA time-zone name in which the expression is evaluated. */
         val timezone: String,
+        /** Optional maximum number of executions. */
         val maxExecutions: Long? = null,
+        /** Optional inclusive upper bound for execution times. */
         val endAt: Instant? = null,
     ) : Schedule
 }
@@ -47,20 +44,17 @@ sealed interface Delivery {
     /** Makes executions available through the worker lease API. */
     data object Pull : Delivery
 
-    /**
-     * Sends executions to an HTTP endpoint.
-     *
-     * @property method HTTP method used for the request.
-     * @property url Absolute callback URL.
-     * @property parametersType Encoding used to pass execution parameters.
-     * @property secretRef Optional reference to a configured Authorization header value.
-     * @property retryableStatuses Additional response status codes that should be retried.
-     */
+    /** Sends executions to an HTTP endpoint. */
     data class HttpCallback(
+        /** HTTP method used for the request. */
         val method: Method,
+        /** Absolute callback URL. */
         val url: String,
+        /** Encoding used to pass execution parameters. */
         val parametersType: ParametersType,
+        /** Optional reference to a configured Authorization header value. */
         val secretRef: String? = null,
+        /** Additional response status codes that should be retried. */
         val retryableStatuses: List<Int>? = null,
     ) : Delivery {
         /** HTTP methods supported by callback delivery. */
@@ -71,93 +65,87 @@ sealed interface Delivery {
     }
 }
 
-/**
- * Controls retry timing after a failed execution attempt.
- *
- * @property maxAttempts Maximum total number of attempts, including the initial attempt.
- * @property initialDelaySeconds Delay before the first retry.
- * @property multiplier Exponential multiplier applied for each subsequent retry.
- * @property maxDelaySeconds Upper bound for a calculated retry delay.
- * @property jitter Fractional random variation applied to a retry delay.
- */
+/** Controls retry timing after a failed execution attempt. */
 data class RetryPolicy(
+    /** Maximum total number of attempts, including the initial attempt. */
     val maxAttempts: Int = 5,
+    /** Delay before the first retry. */
     val initialDelaySeconds: Long = 5,
+    /** Exponential multiplier applied for each subsequent retry. */
     val multiplier: Double = 2.0,
+    /** Upper bound for a calculated retry delay. */
     val maxDelaySeconds: Long = 300,
+    /** Fractional random variation applied to a retry delay. */
     val jitter: Double = .2,
 )
 
-/** @property allowOverlap Whether multiple executions of the same job may run concurrently. */
-data class ExecutionPolicy(val allowOverlap: Boolean = false)
+/** Controls concurrency between executions of the same job. */
+data class ExecutionPolicy(
+    /** Whether multiple executions of the same job may run concurrently. */
+    val allowOverlap: Boolean = false,
+)
 
 /** Lifecycle state of a registered job. */
 enum class JobStatus { ACTIVE, CANCELLING, CANCELLED, COMPLETED, FAILED }
 
-/**
- * Registered background job and its current scheduling state.
- *
- * @property id Unique job identifier.
- * @property producerService Service that registered the job.
- * @property targetService Service responsible for executing the task.
- * @property taskName Task identifier understood by the target service.
- * @property idempotencyKey Producer-scoped registration idempotency key.
- * @property parameters Arbitrary JSON-compatible task parameters.
- * @property schedule Execution schedule supplied at registration.
- * @property delivery Mechanism used to deliver executions.
- * @property retryPolicy Retry behavior for failed attempts.
- * @property executionPolicy Concurrency behavior for recurring executions.
- * @property status Current job lifecycle state.
- * @property createdAt Time at which the job was registered.
- * @property updatedAt Time of the latest state change.
- * @property nextRunAt Next planned execution time, or null when no further execution is planned.
- * @property executionCount Number of executions materialized for this job.
- */
+/** Registered background job and its current scheduling state. */
 data class Job(
+    /** Unique job identifier. */
     val id: String,
+    /** Service that registered the job. */
     val producerService: String,
+    /** Service responsible for executing the task. */
     val targetService: String,
+    /** Task identifier understood by the target service. */
     val taskName: String,
+    /** Producer-scoped registration idempotency key. */
     val idempotencyKey: String,
+    /** Arbitrary JSON-compatible task parameters. */
     val parameters: JsonContainer,
+    /** Execution schedule supplied at registration. */
     val schedule: Schedule,
+    /** Mechanism used to deliver executions. */
     val delivery: Delivery,
+    /** Retry behavior for failed attempts. */
     val retryPolicy: RetryPolicy,
+    /** Concurrency behavior for recurring executions. */
     val executionPolicy: ExecutionPolicy,
+    /** Current job lifecycle state. */
     val status: JobStatus,
+    /** Time at which the job was registered. */
     val createdAt: Instant,
+    /** Time of the latest state change. */
     val updatedAt: Instant,
+    /** Next planned execution time, or null when no further execution is planned. */
     val nextRunAt: Instant?,
+    /** Number of executions materialized for this job. */
     val executionCount: Long,
 )
 
-/**
- * Domain command for registering a job.
- *
- * @property targetService Service responsible for executing the task.
- * @property taskName Task identifier understood by the target service.
- * @property idempotencyKey Producer-scoped idempotency key.
- * @property parameters Arbitrary JSON-compatible task parameters.
- * @property schedule Requested execution schedule.
- * @property delivery Requested execution delivery mechanism.
- * @property retryPolicy Optional retry policy; service defaults are used when absent.
- * @property executionPolicy Optional execution policy; service defaults are used when absent.
- */
+/** Domain command for registering a job. */
 data class CreateJobCommand(
+    /** Service responsible for executing the task. */
     val targetService: String,
+    /** Task identifier understood by the target service. */
     val taskName: String,
+    /** Producer-scoped idempotency key. */
     val idempotencyKey: String,
+    /** Arbitrary JSON-compatible task parameters. */
     val parameters: JsonContainer,
+    /** Requested execution schedule. */
     val schedule: Schedule,
+    /** Requested execution delivery mechanism. */
     val delivery: Delivery,
+    /** Optional retry policy; service defaults are used when absent. */
     val retryPolicy: RetryPolicy? = null,
+    /** Optional execution policy; service defaults are used when absent. */
     val executionPolicy: ExecutionPolicy? = null,
 )
 
-/**
- * Result of idempotent job registration.
- *
- * @property created True when a new job was stored; false when an identical job already existed.
- * @property job Newly created or previously existing job.
- */
-data class CreateJobResult(val created: Boolean, val job: Job)
+/** Result of idempotent job registration. */
+data class CreateJobResult(
+    /** True when a new job was stored; false when an identical job already existed. */
+    val created: Boolean,
+    /** Newly created or previously existing job. */
+    val job: Job,
+)

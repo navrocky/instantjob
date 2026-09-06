@@ -1,39 +1,36 @@
 package features.executions
 
 import infrastructure.database.InstantJobCatalog
-import infrastructure.database.PersistenceJson
-import io.github.kormium.DelicateKormiumApi
 import io.github.kormium.Scope
+import io.github.kormium.and
+import io.github.kormium.eq
+import kotlin.uuid.Uuid
 
-@OptIn(DelicateKormiumApi::class)
+/** Stores execution attempts in PostgreSQL through a transaction-bound Kormium scope. */
 class PostgresAttemptRepository(
-    private val scope: Scope<InstantJobCatalog>
+    private val scope: Scope<InstantJobCatalog>,
 ) : AttemptRepository {
-    override fun listByExecution(executionId: String): List<Attempt> = scope.execute(
-        "SELECT body::text FROM attempts WHERE execution_id=CAST(:id AS uuid) ORDER BY attempt_number",
-        mapOf("id" to executionId),
-        emptyList(),
-    ) { PersistenceJson.decodeAttempt(it.getString(0)!!) }
+    override fun listByExecution(executionId: String): List<Attempt> = with(scope) {
+        AttemptsTable.find {
+            where { AttemptsTable.executionId eq Uuid.parse(executionId) }
+            orderBy ASC AttemptsTable.attemptNumber
+        }
+    }.map(AttemptEntity::toDomain)
 
     override fun insert(executionId: String, attempt: Attempt) {
-        scope.executeUpdate(
-            "INSERT INTO attempts(execution_id,attempt_number,body,started_at) VALUES(CAST(:id AS uuid),:number,CAST(:body AS jsonb),CAST(:started AS timestamptz))",
-            mapOf(
-                "id" to executionId, "number" to attempt.number,
-                "body" to PersistenceJson.encode(attempt), "started" to attempt.startedAt.toString(),
-            ),
-            emptyList(),
-        )
+        with(scope) { AttemptsTable.insert(attempt.toEntity(executionId)) }
     }
 
     override fun update(executionId: String, attempt: Attempt) {
-        scope.executeUpdate(
-            "UPDATE attempts SET body=CAST(:body AS jsonb),finished_at=CAST(:finished AS timestamptz) WHERE execution_id=CAST(:id AS uuid) AND attempt_number=:number",
-            mapOf(
-                "body" to PersistenceJson.encode(attempt), "finished" to attempt.finishedAt?.toString(),
-                "id" to executionId, "number" to attempt.number,
-            ),
-            emptyList(),
-        )
+        val executionUuid = Uuid.parse(executionId)
+        val affected = with(scope) {
+            AttemptsTable.update(attempt.toUpdateEntity()) {
+                where {
+                    (AttemptsTable.executionId eq executionUuid) and
+                            (AttemptsTable.attemptNumber eq attempt.number)
+                }
+            }
+        }
+        check(affected == 1L) { "Attempt does not exist: executionId=$executionId, number=${attempt.number}" }
     }
 }
